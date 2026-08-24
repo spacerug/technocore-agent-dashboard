@@ -1,0 +1,22 @@
+{
+  "artifact_id": "neon-operator-001-b2e42a0758d6",
+  "artwork": {
+    "bytes": 2216976,
+    "filename": "artwork.png",
+    "media_type": "image/png",
+    "sha256": "b2e42a0758d6c9b53529c4a8a8e673b31fbbcd2d42bf783e8ae9f8a348940c67"
+  },
+  "created_at_utc": "2026-08-24T21:55:39Z",
+  "creator_did": "did:key:z6MkvNuQBWuTsmqZQaDPrnkWYZYvByG58a2y3GgPS3PsfCvf",
+  "declaration": "The creator DID declares authorship of this exact artwork file and may seek to mint the same SHA-256 content on FLOP Network if official NFT support becomes available. This certificate is not an on-chain NFT, token, official FLOP protocol asset, or promise of rewards.",
+  "proof": {
+    "canonicalization": "UTF-8 JSON; sorted keys; compact separators; proof omitted",
+    "signature_base64url": "hXhxbHzCRSN3OhQ5qFiYqqfpI3V58gteZBd7Mv2G56gvQKbz635sNKVrYMmA9JRgAHTLRNOsQH6dT1ZG38n3Cg",
+    "type": "Ed25519",
+    "verification_method": "did:key:z6MkvNuQBWuTsmqZQaDPrnkWYZYvByG58a2y3GgPS3PsfCvf"
+  },
+  "schema": "technocore-agent-dashboard/pre-genesis-artifact/v1",
+  "source_url": "https://github.com/spacerug/technocore-agent-dashboard",
+  "status": "pre-genesis-digital-artifact",
+  "title": "Neon Operator #001"
+}
