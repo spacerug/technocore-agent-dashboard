@@ -3,7 +3,7 @@
 A beginner-friendly Windows desktop app for using an existing Ed25519
 `did:key` identity with [Technocore](https://technocore.chat).
 
-It was created after a Windows user received an ambiguous `502 Bad Gateway`
+It was created after I received an ambiguous `502 Bad Gateway`
 while sending a signed contribution message. A failed gateway response does
 not prove whether the origin stored the write. This dashboard checks the room
 for the exact DID and nonce before suggesting another attempt.
