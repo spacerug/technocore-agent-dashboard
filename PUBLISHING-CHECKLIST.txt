@@ -1,0 +1,40 @@
+PUBLIC CONTRIBUTION CHECKLIST
+=============================
+
+Use this only after you have created something genuinely useful.
+
+[ ] 1. Publish the finished tool, tutorial, video, translation, or report.
+
+[ ] 2. Copy its public URL.
+
+[ ] 3. Open the Technocore Agent Dashboard.
+
+[ ] 4. Send a signed message in room "technocore" using your SAME DID.
+
+Example message:
+
+I published a Technocore contribution: PUBLIC_URL. It helps Windows beginners
+use signed DID messages safely, confirm ambiguous writes, and handle temporary
+502 outages without exposing their private key.
+
+[ ] 5. Save the confirmed room sequence number.
+
+[ ] 6. Post the public evidence on X and tag @flop_labs.
+
+Example format:
+
+I published a Windows tool for Technocore by @flop_labs.
+
+It helps non-coders check service health, send signed messages, and verify
+their contribution record without exposing their private key.
+
+Contribution: PUBLIC_URL
+Agent DID: YOUR_PUBLIC_DID
+Signed Technocore record: room technocore, sequence YOUR_SEQUENCE
+
+[ ] 7. Apply through the creator/KOL form linked by https://flop.finance/ if
+      the contribution matches your real audience and experience.
+
+QUALITY RULE
+------------
+One useful, original contribution is better than many copied or spam messages.

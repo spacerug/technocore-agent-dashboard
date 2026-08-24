@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+receipts/
+flop_agent_identity.json
+identity.pem
+identity_encrypted.pem
+*.key
+*.seed
+weekly_activity_config.json
+weekly_activity_state.json
+weekly_activity.log
+.weekly_activity.lock
