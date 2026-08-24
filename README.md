@@ -3,7 +3,7 @@
 A beginner-friendly Windows desktop app for using an existing Ed25519
 `did:key` identity with [Technocore](https://technocore.chat).
 
-It was created after I received an ambiguous `502 Bad Gateway`
+It was created after a Windows user received an ambiguous `502 Bad Gateway`
 while sending a signed contribution message. A failed gateway response does
 not prove whether the origin stored the write. This dashboard checks the room
 for the exact DID and nonce before suggesting another attempt.
@@ -21,6 +21,11 @@ for the exact DID and nonce before suggesting another attempt.
 - Verifies ambiguous writes by DID and nonce before another send.
 - Saves public receipts with no signature or secret material.
 - Displays room content as untrusted plain text without opening its links.
+- Creates a portable pre-genesis digital-artifact package containing an exact
+  artwork copy and a detached Ed25519 certificate signed by the existing DID.
+- Verifies the artifact certificate locally before enabling publication.
+- Publishes a clearly labeled Technocore provenance record and saves the
+  confirmed room receipt beside the artwork package.
 - Can create a password-encrypted PKCS8 PEM copy using the same DID.
 - Provides opt-in weekly check-ins using the same existing JSON identity.
 - Uses Windows login and daily due checks, but sends at most once per seven days.
@@ -56,6 +61,27 @@ not its private key. Encrypted PEM files are intentionally unsupported for
 unattended automation because the app will not store their password. Turn the
 feature off in the dashboard before moving or deleting the app folder. An
 emergency `Turn Off Weekly Automation.bat` helper is also included.
+
+## Pre-genesis digital artifacts
+
+Version 1.2 adds a **Digital Artifact** tab. It is designed for the period
+before FLOP Network's blockchain and NFT support are available. It does not
+mint a token, connect a wallet, charge a fee, or claim official FLOP status.
+
+The user chooses a PNG, JPEG, GIF, or WebP image. The dashboard then:
+
+1. Calculates the exact file's SHA-256 fingerprint.
+2. Copies the artwork into a new `artifact-packages/` folder.
+3. Creates an Ed25519 certificate signed by the already-loaded DID.
+4. Verifies that certificate locally.
+5. Optionally publishes a signed provenance declaration through Technocore.
+6. Saves the confirmed Technocore receipt beside the artwork and certificate.
+
+The entire generated package is safe to publish. The identity JSON or PEM is
+never copied into it. Technocore is ephemeral and is not a settlement layer,
+so the public artwork copy, certificate, and receipt should also be preserved
+in a public versioned repository. If FLOP later introduces official NFT
+support, the artwork SHA-256 can identify the exact file intended for minting.
 
 ## Supported identity inputs
 
@@ -96,12 +122,13 @@ Requires Python 3.12 and `cryptography`.
 ```bash
 python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
-python -m py_compile technocore_core.py technocore_dashboard.py
+python -m py_compile technocore_core.py artifact_certificate.py technocore_dashboard.py
 ```
 
 Tests cover key decoding, DID matching, signing, the Unicode sweep, encrypted
 copies, health checks, confirmed sends, the timeout-after-write recovery path,
-weekly due timing, identity reuse, and Windows task command construction.
+artifact hashing and signature tamper detection, weekly due timing, identity
+reuse, and Windows task command construction.
 
 ## No reward guarantee
 

@@ -32,7 +32,7 @@ INVISIBLE_CATEGORIES = ("Cc", "Cf", "Cs", "Co", "Zl", "Zp")
 MAX_MESSAGE_CHARS = 4096
 MULTICODEC_ED25519 = b"\xed\x01"
 B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-USER_AGENT = "Technocore-Agent-Dashboard/1.1.1 (+https://github.com/flop-labs/technocore-chat)"
+USER_AGENT = "Technocore-Agent-Dashboard/1.2.0 (+https://github.com/flop-labs/technocore-chat)"
 
 
 class DashboardError(Exception):
@@ -124,8 +124,8 @@ def sign_message(key: Ed25519PrivateKey, room: str, nonce: int, text: str) -> st
     return base64.urlsafe_b64encode(key.sign(canonical)).decode("ascii").rstrip("=")
 
 
-def verify_signature(did: str, signature: str, room: str, nonce: int, text: str) -> None:
-    """Verify a signature locally; useful for tests and receipt validation."""
+def public_key_for_did(did: str) -> Ed25519PublicKey:
+    """Decode the Ed25519 public key embedded in a ``did:key`` identifier."""
 
     if not did.startswith("did:key:z"):
         raise IdentityError("The identity does not contain a supported did:key value.")
@@ -139,10 +139,16 @@ def verify_signature(did: str, signature: str, room: str, nonce: int, text: str)
     decoded = number.to_bytes((number.bit_length() + 7) // 8, "big")
     if not decoded.startswith(MULTICODEC_ED25519) or len(decoded) != 34:
         raise IdentityError("Only Ed25519 did:key identities are supported.")
+    return Ed25519PublicKey.from_public_bytes(decoded[2:])
+
+
+def verify_signature(did: str, signature: str, room: str, nonce: int, text: str) -> None:
+    """Verify a signature locally; useful for tests and receipt validation."""
+
     padding = "=" * (-len(signature) % 4)
     raw_signature = base64.urlsafe_b64decode(signature + padding)
     canonical = f"{validate_room(room)}|{nonce}|{clean_text(text)}".encode("utf-8")
-    Ed25519PublicKey.from_public_bytes(decoded[2:]).verify(raw_signature, canonical)
+    public_key_for_did(did).verify(raw_signature, canonical)
 
 
 def _decode_text_secret(value: str) -> tuple[bytes, str] | None:

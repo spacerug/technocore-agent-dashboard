@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import traceback
 import webbrowser
@@ -11,6 +12,11 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
+from artifact_certificate import (
+    ArtifactPackage,
+    create_artifact_package,
+    save_artifact_launch_receipt,
+)
 from technocore_core import (
     DashboardError,
     Identity,
@@ -42,7 +48,7 @@ from weekly_activity import (
 
 
 APP_NAME = "Technocore Agent Dashboard"
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.0"
 BG = "#0c1220"
 PANEL = "#151d2e"
 TEXT = "#eef4ff"
@@ -74,6 +80,9 @@ class DashboardApp(tk.Tk):
         self.client = TechnocoreClient()
         self.identity: Identity | None = None
         self.last_result: SendResult | None = None
+        self.artifact_file: Path | None = None
+        self.artifact_package: ArtifactPackage | None = None
+        self.artifact_published = False
         self.health_ok = False
         self.busy_count = 0
         self.startup_weekly_checked = False
@@ -171,15 +180,18 @@ class DashboardApp(tk.Tk):
 
         self.send_tab = ttk.Frame(self.notebook, padding=18)
         self.room_tab = ttk.Frame(self.notebook, padding=18)
+        self.artifact_tab = ttk.Frame(self.notebook, padding=18)
         self.security_tab = ttk.Frame(self.notebook, padding=18)
         self.weekly_tab = ttk.Frame(self.notebook, padding=18)
         self.notebook.add(self.send_tab, text="1. Check & Send")
         self.notebook.add(self.room_tab, text="2. Read a Room")
-        self.notebook.add(self.security_tab, text="3. Protect Identity")
-        self.notebook.add(self.weekly_tab, text="4. Weekly Automation")
+        self.notebook.add(self.artifact_tab, text="3. Digital Artifact")
+        self.notebook.add(self.security_tab, text="4. Protect Identity")
+        self.notebook.add(self.weekly_tab, text="5. Weekly Automation")
 
         self._build_send_tab()
         self._build_room_tab()
+        self._build_artifact_tab()
         self._build_security_tab()
         self._build_weekly_tab()
 
@@ -303,6 +315,136 @@ class DashboardApp(tk.Tk):
             state="disabled",
         )
         self.room_output.pack(fill="both", expand=True)
+
+    def _build_artifact_tab(self) -> None:
+        tk.Label(
+            self.artifact_tab,
+            text="Create a signed FLOP pre-genesis digital artifact",
+            bg=BG,
+            fg=TEXT,
+            anchor="w",
+            font=("Segoe UI Semibold", 13),
+        ).pack(fill="x")
+        ttk.Label(
+            self.artifact_tab,
+            text=(
+                "This makes a verifiable certificate and publishes a signed Technocore record. "
+                "It does not mint an NFT because FLOP Network is not live yet."
+            ),
+            style="Sub.TLabel",
+            wraplength=900,
+            justify="left",
+        ).pack(anchor="w", pady=(5, 14))
+
+        form = ttk.Frame(self.artifact_tab, style="Panel.TFrame", padding=16)
+        form.pack(fill="x")
+
+        ttk.Label(form, text="Artwork title:", style="Panel.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 9)
+        )
+        self.artifact_title = tk.StringVar(value="Neon Operator #001")
+        ttk.Entry(form, textvariable=self.artifact_title, width=54).grid(
+            row=0, column=1, sticky="ew", padx=(12, 0), pady=(0, 9)
+        )
+
+        ttk.Label(form, text="Public source URL:", style="Panel.TLabel").grid(
+            row=1, column=0, sticky="w", pady=(0, 9)
+        )
+        self.artifact_source_url = tk.StringVar()
+        ttk.Entry(form, textvariable=self.artifact_source_url).grid(
+            row=1, column=1, sticky="ew", padx=(12, 0), pady=(0, 9)
+        )
+        ttk.Label(
+            form,
+            text="Optional. A public GitHub repository URL is recommended.",
+            style="PanelMuted.TLabel",
+        ).grid(row=2, column=1, sticky="w", padx=(12, 0), pady=(0, 10))
+
+        ttk.Label(form, text="Technocore room:", style="Panel.TLabel").grid(
+            row=3, column=0, sticky="w", pady=(0, 9)
+        )
+        self.artifact_room = tk.StringVar(value="technocore")
+        ttk.Entry(form, textvariable=self.artifact_room, width=24).grid(
+            row=3, column=1, sticky="w", padx=(12, 0), pady=(0, 9)
+        )
+
+        ttk.Label(form, text="Artwork file:", style="Panel.TLabel").grid(
+            row=4, column=0, sticky="w"
+        )
+        file_line = ttk.Frame(form, style="Panel.TFrame")
+        file_line.grid(row=4, column=1, sticky="ew", padx=(12, 0))
+        ttk.Button(file_line, text="Choose Artwork Image", command=self._choose_artwork).pack(
+            side="left"
+        )
+        self.artifact_file_label = tk.Label(
+            file_line,
+            text="No image selected",
+            bg=PANEL,
+            fg=MUTED,
+            anchor="w",
+            font=("Segoe UI", 9),
+        )
+        self.artifact_file_label.pack(side="left", fill="x", expand=True, padx=10)
+        form.columnconfigure(1, weight=1)
+
+        warning = tk.Label(
+            self.artifact_tab,
+            text=(
+                "The package is safe to publish. Your identity file is never copied into it. "
+                "Only choose artwork you created or have permission to use."
+            ),
+            bg="#392f1f",
+            fg="#ffe0a3",
+            padx=12,
+            pady=9,
+            anchor="w",
+            justify="left",
+            wraplength=900,
+            font=("Segoe UI Semibold", 9),
+        )
+        warning.pack(fill="x", pady=(12, 10))
+
+        buttons = ttk.Frame(self.artifact_tab)
+        buttons.pack(fill="x")
+        self.artifact_create_button = ttk.Button(
+            buttons,
+            text="1. Create Signed Package",
+            command=self._create_artifact,
+            state="disabled",
+        )
+        self.artifact_create_button.pack(side="left")
+        self.artifact_open_button = ttk.Button(
+            buttons,
+            text="2. Open Package Folder",
+            command=self._open_artifact_folder,
+            state="disabled",
+        )
+        self.artifact_open_button.pack(side="left", padx=8)
+        ttk.Button(
+            buttons,
+            text="Check Technocore",
+            command=self._check_health,
+        ).pack(side="left")
+        self.artifact_publish_button = ttk.Button(
+            buttons,
+            text="3. Publish Signed Record",
+            style="Primary.TButton",
+            command=self._publish_artifact,
+            state="disabled",
+        )
+        self.artifact_publish_button.pack(side="left", padx=8)
+
+        self.artifact_status = tk.Label(
+            self.artifact_tab,
+            text="Choose an image to begin.",
+            bg=BG,
+            fg=MUTED,
+            anchor="nw",
+            justify="left",
+            wraplength=900,
+            font=("Consolas", 9),
+        )
+        self.artifact_status.pack(fill="both", expand=True, pady=(14, 0))
 
     def _build_security_tab(self) -> None:
         card = ttk.Frame(self.security_tab, style="Panel.TFrame", padding=20)
@@ -513,6 +655,12 @@ class DashboardApp(tk.Tk):
     def _refresh_action_state(self) -> None:
         ready = self.identity is not None and self.health_ok
         self.send_button.configure(state="normal" if ready else "disabled")
+        artifact_ready = self.identity is not None and self.artifact_file is not None
+        self.artifact_create_button.configure(state="normal" if artifact_ready else "disabled")
+        publish_ready = ready and self.artifact_package is not None and not self.artifact_published
+        self.artifact_publish_button.configure(
+            state="normal" if publish_ready else "disabled"
+        )
 
     def _auto_load_identity(self) -> None:
         candidates = discover_identity_files(self.app_dir)
@@ -718,6 +866,188 @@ class DashboardApp(tk.Tk):
             self.room_output.configure(state="disabled")
 
         self._run_background(f"Reading room {room}...", work, success)
+
+    def _choose_artwork(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Choose your original artwork",
+            initialdir=str(Path.home()),
+            filetypes=[
+                ("Artwork images", "*.png *.jpg *.jpeg *.gif *.webp"),
+                ("All files", "*.*"),
+            ],
+        )
+        if not path:
+            return
+        self.artifact_file = Path(path).resolve()
+        self.artifact_package = None
+        self.artifact_published = False
+        self.artifact_file_label.configure(text=str(self.artifact_file), fg=TEXT)
+        self.artifact_open_button.configure(state="disabled")
+        self.artifact_status.configure(
+            text="Image selected. Click 1. Create Signed Package.", fg=YELLOW
+        )
+        self._refresh_action_state()
+
+    def _create_artifact(self) -> None:
+        if not self.identity or not self.artifact_file:
+            messagebox.showwarning("Artwork needed", "Load your identity and choose an image first.")
+            return
+
+        identity = self.identity
+        image_path = self.artifact_file
+        title = self.artifact_title.get()
+        source_url = self.artifact_source_url.get()
+
+        def work() -> ArtifactPackage:
+            return create_artifact_package(
+                identity,
+                image_path,
+                title,
+                source_url,
+                self.app_dir / "artifact-packages",
+            )
+
+        def success(package: ArtifactPackage) -> None:
+            self.artifact_package = package
+            self.artifact_published = False
+            self.artifact_open_button.configure(state="normal")
+            artwork = package.manifest["artwork"]
+            self.artifact_status.configure(
+                text=(
+                    f"Package ready: {package.directory.name}\n"
+                    f"Artwork SHA-256: {artwork['sha256']}\n"
+                    f"Certificate SHA-256: {package.certificate_sha256}\n"
+                    "Next: open the package folder, then check Technocore and publish the signed record."
+                ),
+                fg=GREEN,
+            )
+            self._refresh_action_state()
+            messagebox.showinfo(
+                "Signed artifact package created",
+                (
+                    "Success. The exact artwork copy and its signed certificate are ready.\n\n"
+                    f"Folder:\n{package.directory}\n\n"
+                    "This is a pre-genesis provenance package, not an on-chain NFT."
+                ),
+            )
+
+        self.artifact_create_button.configure(state="disabled")
+        self._run_background("Creating and verifying the artifact certificate...", work, success)
+
+    def _open_artifact_folder(self) -> None:
+        if not self.artifact_package:
+            return
+        path = self.artifact_package.directory
+        try:
+            if os.name == "nt":
+                os.startfile(str(path))
+            else:
+                webbrowser.open(path.as_uri())
+        except OSError as exc:
+            messagebox.showerror("Could not open folder", f"Open this folder manually:\n{path}\n\n{exc}")
+
+    def _publish_artifact(self) -> None:
+        if not self.identity or not self.artifact_package:
+            messagebox.showwarning("Package needed", "Create the signed artifact package first.")
+            return
+        if not self.health_ok:
+            messagebox.showwarning(
+                "Check Technocore first", "Click Check Technocore and wait for the green Online status."
+            )
+            return
+
+        room = self.artifact_room.get()
+        try:
+            validate_room(room)
+        except DashboardError as exc:
+            messagebox.showwarning("Room name", str(exc))
+            return
+
+        package = self.artifact_package
+        current_title = " ".join(self.artifact_title.get().split())
+        if current_title != package.manifest["title"]:
+            messagebox.showwarning(
+                "Package needs updating",
+                "The title changed after the package was created. Click Create Signed Package again.",
+            )
+            return
+        current_url = self.artifact_source_url.get().strip() or None
+        if current_url != package.manifest.get("source_url"):
+            messagebox.showwarning(
+                "Package needs updating",
+                "The public source URL changed after the package was created. Click Create Signed Package again.",
+            )
+            return
+
+        if not package.manifest.get("source_url") and not messagebox.askyesno(
+            "Publish without a public source URL?",
+            (
+                "The signed record will contain the artwork fingerprint, but no public download link.\n\n"
+                "You can continue now, or click No and add your public GitHub repository URL first."
+            ),
+            icon="warning",
+        ):
+            return
+
+        if not messagebox.askyesno(
+            "Publish this signed artifact record?",
+            (
+                f"Title: {package.manifest['title']}\n"
+                f"Room: {room.strip()}\n\n"
+                "This publishes the certificate fingerprints and declaration. It does not upload "
+                "the image, mint an NFT, charge money, or connect a wallet. Continue?"
+            ),
+            icon="warning",
+        ):
+            return
+
+        identity = self.identity
+
+        def work() -> SendResult:
+            return self.client.send_signed(identity, room, package.announcement_text)
+
+        def success(result: SendResult) -> None:
+            self.last_result = result
+            if result.confirmed:
+                receipt_path = save_artifact_launch_receipt(package, result)
+                sequence = result.posted.get("seq") if result.posted else "?"
+                self.artifact_published = True
+                self.receipt_button.configure(state="normal")
+                self.artifact_status.configure(
+                    text=(
+                        f"PUBLISHED AND CONFIRMED\n"
+                        f"Room: {result.room} | Sequence: {sequence}\n"
+                        f"Artwork SHA-256: {package.manifest['artwork']['sha256']}\n"
+                        f"Public receipt: {receipt_path.name}"
+                    ),
+                    fg=GREEN,
+                )
+                messagebox.showinfo(
+                    "Pre-genesis artifact confirmed",
+                    (
+                        "Technocore confirmed the signed record.\n\n"
+                        f"Room: {result.room}\nSequence: {sequence}\n\n"
+                        f"The public receipt was saved inside:\n{package.directory}"
+                    ),
+                )
+            else:
+                self.health_ok = False
+                self.service_dot.configure(text="● Re-check service before retrying", fg=RED)
+                self.artifact_status.configure(
+                    text="Not confirmed. Do not spam retry. Check Technocore again first.", fg=RED
+                )
+                messagebox.showwarning(
+                    "Artifact record not confirmed",
+                    (
+                        "The signed record was not found after the request failed.\n\n"
+                        f"Detail: {result.detail}\n\n"
+                        "Check Technocore before trying again."
+                    ),
+                )
+            self._refresh_action_state()
+
+        self.artifact_publish_button.configure(state="disabled")
+        self._run_background("Publishing and verifying the artifact record...", work, success)
 
     def _create_protected_copy(self) -> None:
         if not self.identity:

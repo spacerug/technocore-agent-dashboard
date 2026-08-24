@@ -38,3 +38,23 @@ Signed Technocore record: room technocore, sequence YOUR_SEQUENCE
 QUALITY RULE
 ------------
 One useful, original contribution is better than many copied or spam messages.
+
+
+PRE-GENESIS DIGITAL ARTIFACT CHECKLIST
+======================================
+
+[ ] 1. Use artwork you created or have permission to publish.
+
+[ ] 2. Open tab "3. Digital Artifact" and choose the image.
+
+[ ] 3. Create the signed package and open its folder.
+
+[ ] 4. Confirm the package contains only the artwork, certificate, and
+      instructions. Never add an identity JSON, PEM, password, or wallet key.
+
+[ ] 5. Upload the safe package to a public versioned repository if desired.
+
+[ ] 6. Check Technocore, publish the signed record once, and save its sequence.
+
+[ ] 7. Describe it accurately as a pre-genesis signed provenance artifact,
+      not an on-chain NFT or an official FLOP protocol asset.
