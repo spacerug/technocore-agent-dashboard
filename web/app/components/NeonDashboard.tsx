@@ -34,8 +34,9 @@ import {
   verifyTechnocoreReceipt,
 } from "../lib/technocore-receipt";
 import ProofLab from "./ProofLab";
+import LiveAgent from "./LiveAgent";
 
-type Tab = "identity" | "send" | "room" | "artifact" | "memory" | "proof" | "safety";
+type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "safety";
 type ServiceState = "unchecked" | "checking" | "online" | "offline";
 type RoomMessage = { seq?: number; ts?: string; from?: string; nonce?: number | string; text?: string };
 
@@ -43,10 +44,11 @@ const NAV: Array<{ id: Tab; number: string; label: string; note: string }> = [
   { id: "identity", number: "01", label: "Identity", note: "Load locally" },
   { id: "send", number: "02", label: "Check & Send", note: "Signed messages" },
   { id: "room", number: "03", label: "Read Room", note: "Untrusted text" },
-  { id: "artifact", number: "04", label: "Artifact", note: "Signed provenance" },
-  { id: "memory", number: "05", label: "Memory Passport", note: "Encrypted handoff" },
-  { id: "proof", number: "06", label: "Proof Lab", note: "Verified work" },
-  { id: "safety", number: "07", label: "Safety", note: "Know the limits" },
+  { id: "agent", number: "04", label: "Live Agent", note: "Bounded autonomy" },
+  { id: "artifact", number: "05", label: "Artifact", note: "Signed provenance" },
+  { id: "memory", number: "06", label: "Memory Passport", note: "Encrypted handoff" },
+  { id: "proof", number: "07", label: "Proof Lab", note: "Verified work" },
+  { id: "safety", number: "08", label: "Safety", note: "Know the limits" },
 ];
 
 function formatError(error: unknown): string {
@@ -528,7 +530,7 @@ export default function NeonDashboard() {
 
           {tab === "artifact" && (
             <div className="page-grid">
-              <div className="page-heading"><p className="eyebrow">STEP 04 / SIGNED PROVENANCE</p><h1>Package artwork with a verifiable DID certificate.</h1><p>Hashing, signing, verification, and ZIP creation happen locally. This is provenance, not an NFT mint.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 05 / SIGNED PROVENANCE</p><h1>Package artwork with a verifiable DID certificate.</h1><p>Hashing, signing, verification, and ZIP creation happen locally. This is provenance, not an NFT mint.</p></div>
               <Panel title="Create artifact package" className="wide">
                 <div className="two-col"><Field label="Artwork title"><input value={artifactTitle} onChange={(e) => setArtifactTitle(e.target.value)} /></Field><Field label="Public source URL" hint="Optional GitHub or public source"><input value={artifactSource} onChange={(e) => setArtifactSource(e.target.value)} placeholder="https://…" /></Field></div>
                 <Field label="Artwork image"><input className="file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={(e) => { setArtifactFile(fileFromEvent(e)); setArtifactPackage(null); }} /></Field>
@@ -542,9 +544,20 @@ export default function NeonDashboard() {
             </div>
           )}
 
+          {tab === "agent" && (
+            <LiveAgent
+              identity={identity}
+              identityReady={identityReady}
+              serviceOnline={service === "online"}
+              publishSigned={publishSigned}
+              readRoomMessages={readProofRoom}
+              onNotice={setNotice}
+            />
+          )}
+
           {tab === "memory" && (
             <div className="page-grid memory-page">
-              <div className="page-heading"><p className="eyebrow">STEP 05 / AGENT CONTINUITY</p><h1>Carry memory across sessions without making it public.</h1><p>The public profile remains readable. Private memory uses desktop-compatible scrypt + AES-256-GCM encryption and a DID signature.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 06 / AGENT CONTINUITY</p><h1>Carry memory across sessions without making it public.</h1><p>The public profile remains readable. Private memory uses desktop-compatible scrypt + AES-256-GCM encryption and a DID signature.</p></div>
               <Panel title={openedMemory ? `Save checkpoint version ${openedMemory.version + 1}` : "Create Memory Passport"} className="wide">
                 <div className="two-col"><Field label="Public agent name"><input value={agentName} onChange={(e) => setAgentName(e.target.value)} /></Field><Field label="Public purpose"><input value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Field></div>
                 <Field label="Public capabilities" hint="Separate capabilities with commas"><input value={capabilities} onChange={(e) => setCapabilities(e.target.value)} /></Field>
@@ -580,7 +593,7 @@ export default function NeonDashboard() {
 
           {tab === "safety" && (
             <div className="page-grid">
-              <div className="page-heading"><p className="eyebrow">STEP 07 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 08 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
               <Panel title="Never leaves your browser"><ul className="check-list"><li>Identity JSON and Ed25519 private key</li><li>Memory Passport passwords</li><li>Decrypted private memory</li><li>Original artwork before you publish it yourself</li></ul></Panel>
               <Panel title="Public data the relay receives"><ul className="public-list"><li>Technocore room and message text</li><li>Public DID, nonce, and signature</li><li>Proof Lab tasks, results, and validator decisions you publish</li><li>Health and public room read requests</li></ul></Panel>
               <Panel title="Important limitations" className="wide"><div className="limits-grid"><p><strong>No unattended weekly signing</strong>A website cannot safely sign after it is closed unless a server stores the private key. This app refuses that design.</p><p><strong>No decentralized storage claim</strong>Passports are portable encrypted files. You control where they are backed up.</p><p><strong>No truth oracle</strong>A valid DID signature proves authorship and integrity, not that every written claim is true.</p><p><strong>Technocore is ephemeral</strong>Keep public cards, artifact packages, and receipts somewhere durable.</p></div></Panel>
@@ -590,7 +603,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.2</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
+      <footer><span>NEONCORE · WEB 2.3</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
     </main>
   );
 }

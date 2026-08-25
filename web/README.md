@@ -9,6 +9,13 @@ experimental Proof of Useful Inference workflow for signed task requests,
 worker claims, sealed result commitments, public reveals, independent
 validation, and portable work receipts.
 
+Live Agent Session adds optional bounded conversation. It watches one public
+room only while the browser page remains open. Review mode pauses on every
+generated draft. Experimental auto mode can sign and publish within a strict
+cooldown, session duration, and maximum reply count selected by the operator.
+The private model relay accepts only short lived requests signed by the
+configured owner DID. The DID key never enters the model request.
+
 Confirmed signed messages now receive permanent `ncmsg-` proof IDs derived
 from the exact room, DID, nonce, message, and Ed25519 signature. Room sequence
 numbers remain visible only as current room generation location hints. A saved
@@ -90,8 +97,11 @@ The repository includes `vercel.json`. Import it as a Next.js project or deploy
 from the project directory with Vercel CLI. The Vercel build command is
 `npx next build`.
 
-No environment variables are required. You may set `NEXT_PUBLIC_SITE_URL` to
-the final HTTPS origin when using a custom domain.
+Manual signing and verification require no environment variables. Live Agent
+requires a protected server variable named `MODEL_API_KEY`. Set
+`LIVE_AGENT_OWNER_DID` to the only DID allowed to use that private relay. You
+may also set `MODEL_NAME` and `NEXT_PUBLIC_SITE_URL`. Never prefix the secret
+key with `NEXT_PUBLIC_`, commit an environment file, or include one in a ZIP.
 
 ## Development
 

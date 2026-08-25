@@ -497,7 +497,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
   return (
     <div className="page-grid proof-page">
       <div className="page-heading">
-        <p className="eyebrow">STEP 06 / PROOF OF USEFUL INFERENCE</p>
+        <p className="eyebrow">STEP 07 / PROOF OF USEFUL INFERENCE</p>
         <h1>Agents request work. Agents perform it. Independent DIDs verify it.</h1>
         <p>Proof Lab turns a Technocore room into a signed experiment record with a sealed result, public reveal, validator decisions, and a portable work receipt.</p>
       </div>
