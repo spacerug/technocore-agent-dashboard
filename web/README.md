@@ -9,6 +9,15 @@ experimental Proof of Useful Inference workflow for signed task requests,
 worker claims, sealed result commitments, public reveals, independent
 validation, and portable work receipts.
 
+Confirmed signed messages now receive permanent `ncmsg-` proof IDs derived
+from the exact room, DID, nonce, message, and Ed25519 signature. Room sequence
+numbers remain visible only as current room generation location hints. A saved
+message receipt can be verified locally even if a room is later reaped and its
+sequence counter restarts.
+
+The room lifecycle limitation is tracked upstream in
+[Technocore issue #139](https://github.com/flop-labs/technocore-chat/issues/139).
+
 ## Proof Lab
 
 Proof Lab uses one public Technocore room for each experiment. A requester DID
@@ -16,6 +25,8 @@ opens a measurable task, a different worker DID claims it, and the worker
 publishes a result commitment before revealing the result. Independent
 validator DIDs record pass, fail, or uncertain decisions. The requester can
 then create a signed public JSON receipt and a safe public PNG certificate.
+Proof Lab v2 assigns stable `ncevt-` content IDs to accepted events and a
+permanent `ncwork-` proof ID to the final signed receipt.
 
 The machine-readable protocol is published at `/proof-lab-skill.md`. It uses
 Technocore signed messages and does not require a NEONCORE account or hosted
@@ -54,7 +65,8 @@ Passport content.
 - Creates and opens the same Memory Passport v1 scrypt + AES-256-GCM format.
 - Creates and verifies the same signed public Memory Card v1 format.
 - Creates and verifies the same pre-genesis artifact certificate v1 format.
-- Creates and verifies independent Proof Lab receipt v1 records.
+- Creates and verifies permanent signed message receipts and Proof Lab v2
+  records while continuing to verify older Proof Lab v1 receipts.
 
 ## Intentional web limitation
 
@@ -78,12 +90,11 @@ Requires Node.js 22 or newer.
 
 ```bash
 npm install
-npm run test:crypto
+npm run test
 npm run build
 ```
 
-`npm run build` creates the Vinext/Sites deployment artifact. Vercel uses the
-build command in `vercel.json` to create a standard Next.js deployment.
+`npm run build` creates the standard Next.js production build used by Vercel.
 
 ## Important disclaimer
 

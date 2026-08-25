@@ -11,7 +11,9 @@ import {
 } from "./browser-crypto";
 
 export const PROOF_EVENT_PREFIX = "NCPOUI1:";
-export const PROOF_RECEIPT_SCHEMA = "technocore-agent-dashboard/proof-of-useful-inference-receipt/v1";
+export const PROOF_RECEIPT_SCHEMA_V1 = "technocore-agent-dashboard/proof-of-useful-inference-receipt/v1";
+export const PROOF_RECEIPT_SCHEMA = "neoncore/proof-of-useful-inference-receipt/v2";
+export const PROOF_EVENT_CONTENT_SCHEMA = "neoncore/proof-lab-event-content/v1";
 
 export type ProofAction = "challenge" | "claim" | "commit" | "reveal" | "validate";
 export type ValidatorVerdict = "pass" | "fail" | "uncertain";
@@ -57,6 +59,7 @@ export type AcceptedProofEvent = {
   ts: string;
   did: string;
   nonce: string;
+  contentId: string;
   event: ProofEvent;
 };
 
@@ -96,6 +99,7 @@ export type ProofReceiptPackage = {
   receipt: Record<string, unknown>;
   receiptText: string;
   receiptSha256: string;
+  proofId: string;
   filename: string;
   announcement: string;
 };
@@ -310,13 +314,21 @@ export function createValidationEvent(input: {
   };
 }
 
-function accepted(message: ProofMessage, event: ProofEvent): AcceptedProofEvent | null {
+async function accepted(message: ProofMessage, event: ProofEvent): Promise<AcceptedProofEvent | null> {
   if (!isDid(message.from)) return null;
+  const nonce = message.nonce === undefined ? "" : String(message.nonce);
+  const contentHash = await sha256Bytes(canonicalJson({
+    schema: PROOF_EVENT_CONTENT_SCHEMA,
+    did: message.from,
+    nonce,
+    event,
+  }));
   return {
     seq: typeof message.seq === "number" && Number.isFinite(message.seq) ? message.seq : null,
     ts: typeof message.ts === "string" ? message.ts : "",
     did: message.from,
-    nonce: message.nonce === undefined ? "" : String(message.nonce),
+    nonce,
+    contentId: `ncevt-${contentHash}`,
     event,
   };
 }
@@ -353,7 +365,7 @@ export async function reconstructProofExperiment(room: string, messages: ProofMe
       ignoredMessages += 1;
       continue;
     }
-    const record = accepted(message, event);
+    const record = await accepted(message, event);
     if (!record) {
       ignoredMessages += 1;
       continue;
@@ -451,6 +463,7 @@ export async function createProofReceipt(identity: BrowserIdentity, experiment: 
   const evidence = [experiment.challenge, experiment.claim, experiment.commit, experiment.reveal, ...experiment.validations].map((entry) => ({
     action: entry.event.action,
     did: entry.did,
+    event_content_id: entry.contentId,
     seq: entry.seq,
     ts: entry.ts,
     nonce: entry.nonce,
@@ -461,7 +474,7 @@ export async function createProofReceipt(identity: BrowserIdentity, experiment: 
       [experiment.challenge, experiment.claim, experiment.commit, experiment.reveal, ...experiment.validations][index].event as unknown as Record<string, unknown>,
     ));
   }
-  const unsigned: Record<string, unknown> = {
+  const proofCore: Record<string, unknown> = {
     schema: PROOF_RECEIPT_SCHEMA,
     status: experiment.status,
     challenge_id: experiment.challenge.event.challenge_id,
@@ -486,26 +499,35 @@ export async function createProofReceipt(identity: BrowserIdentity, experiment: 
         validator_did: validation.did,
         verdict: validation.verdict,
         note: validation.note,
+        event_content_id: validation.contentId,
         technocore_seq: validation.seq,
       })),
     },
     technocore_evidence: evidence,
+    sequence_scope: "room_generation_only",
+    sequence_note:
+      "Technocore sequence values are location hints inside the observed room generation. They can be reused if a room is reaped and recreated. Event content IDs and the signed receipt proof ID are the durable identifiers.",
     finalized_at_utc: now(),
     finalized_by_did: identity.did,
+    proof_id_method: "SHA-256 of canonical receipt JSON with proof_id and proof omitted",
     declaration:
       "This independent experimental receipt records DID attributed messages observed in a Technocore room. It is not an official FLOP protocol record, token, payment, mining result, reward promise, or guarantee that every written claim is true.",
   };
+  const proofIdHash = await sha256Bytes(canonicalJson(proofCore));
+  const proofId = `ncwork-${proofIdHash}`;
+  const unsigned: Record<string, unknown> = { ...proofCore, proof_id: proofId };
   const receipt = { ...unsigned, proof: await makeProof(identity, unsigned) };
   const receiptText = prettyJson(receipt);
   const receiptSha256 = await sha256Bytes(new TextEncoder().encode(receiptText));
   const challengeId = experiment.challenge.event.challenge_id;
   const announcement = cleanText(
-    `NEONCORE PROOF OF USEFUL INFERENCE | Challenge: ${challengeId} | Status: ${experiment.status.toUpperCase()} | Requester DID: ${experiment.challenge.did} | Worker DID: ${experiment.claim.did} | Validators: ${experiment.validations.length} | Model: ${String(experiment.commit.event.declared_model)} | Declared compute GFLOP: ${String(experiment.commit.event.declared_compute_gflop)} | Result SHA-256: ${String(experiment.reveal.event.result_sha256)} | Receipt SHA-256: ${receiptSha256} | Technocore room: ${experiment.room} | Declaration: Independent experimental work receipt, not an official FLOP protocol record, token, payment, mining result, or promise of rewards.`,
+    `NEONCORE PROOF OF USEFUL INFERENCE | Challenge: ${challengeId} | Status: ${experiment.status.toUpperCase()} | Permanent Proof ID: ${proofId} | Requester DID: ${experiment.challenge.did} | Worker DID: ${experiment.claim.did} | Validators: ${experiment.validations.length} | Model: ${String(experiment.commit.event.declared_model)} | Declared compute GFLOP: ${String(experiment.commit.event.declared_compute_gflop)} | Result SHA-256: ${String(experiment.reveal.event.result_sha256)} | Receipt SHA-256: ${receiptSha256} | Technocore room: ${experiment.room} | Declaration: Independent experimental work receipt, not an official FLOP protocol record, token, payment, mining result, or promise of rewards.`,
   );
   return {
     receipt,
     receiptText,
     receiptSha256,
+    proofId,
     filename: `${challengeId}-public-work-receipt.json`,
     announcement,
   };
@@ -520,7 +542,22 @@ export async function verifyProofReceipt(text: string): Promise<Record<string, u
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("The Proof Lab receipt is invalid.");
   const receipt = value as Record<string, unknown>;
-  await verifySignedDocument(receipt, PROOF_RECEIPT_SCHEMA);
+  const schema = receipt.schema;
+  if (schema !== PROOF_RECEIPT_SCHEMA && schema !== PROOF_RECEIPT_SCHEMA_V1) {
+    throw new Error("This Proof Lab receipt uses an unsupported schema.");
+  }
+  await verifySignedDocument(receipt, String(schema));
   if (!isChallengeId(receipt.challenge_id) || !isHash(receipt.task_hash)) throw new Error("The Proof Lab receipt identity is invalid.");
+  if (schema === PROOF_RECEIPT_SCHEMA) {
+    const proofId = receipt.proof_id;
+    if (typeof proofId !== "string" || !/^ncwork-[0-9a-f]{64}$/.test(proofId)) {
+      throw new Error("The Proof Lab permanent proof ID is invalid.");
+    }
+    const proofCore = { ...receipt };
+    delete proofCore.proof;
+    delete proofCore.proof_id;
+    const expectedProofId = `ncwork-${await sha256Bytes(canonicalJson(proofCore))}`;
+    if (proofId !== expectedProofId) throw new Error("The Proof Lab permanent proof ID does not match the receipt.");
+  }
   return receipt;
 }

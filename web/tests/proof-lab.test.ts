@@ -69,6 +69,9 @@ test("reconstructs a complete independently validated useful inference experimen
   const verified = await verifyProofReceipt(receipt.receiptText);
   assert.equal(verified.challenge_id, challenge.room);
   assert.equal(verified.worker_did, worker.did);
+  assert.equal(verified.proof_id, receipt.proofId);
+  assert.match(receipt.proofId, /^ncwork-[0-9a-f]{64}$/);
+  assert.match(String((verified.technocore_evidence as Array<Record<string, unknown>>)[0].event_content_id), /^ncevt-[0-9a-f]{64}$/);
   assert.equal(proofCertificateFilename({
     challengeId: challenge.room,
     title: "Check one technical claim",
@@ -81,6 +84,7 @@ test("reconstructs a complete independently validated useful inference experimen
     runtimeSeconds: 18,
     resultSha256: committed.privateReveal.result_sha256,
     receiptSha256: receipt.receiptSha256,
+    proofId: receipt.proofId,
     room: challenge.room,
   }), `${challenge.room}-public-work-certificate.png`);
 

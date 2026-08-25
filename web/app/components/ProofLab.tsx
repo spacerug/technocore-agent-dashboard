@@ -28,7 +28,7 @@ import {
 } from "../lib/proof-certificate";
 
 type Notice = { tone: "good" | "warn" | "bad"; text: string };
-type PublicReceipt = { posted: { seq?: number }; room: string };
+type PublicReceipt = { posted: { seq?: number }; room: string; proof_id: string };
 
 type Props = {
   identity: BrowserIdentity | null;
@@ -96,6 +96,7 @@ function receiptCertificateData(experiment: ProofExperiment, receipt: ProofRecei
     runtimeSeconds: Number(experiment.commit.event.runtime_seconds ?? 0),
     resultSha256: String(experiment.reveal.event.result_sha256 ?? ""),
     receiptSha256: receipt.receiptSha256,
+    proofId: receipt.proofId,
     room: experiment.room,
   };
 }
@@ -183,7 +184,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
     if (!serviceOnline) throw new Error("Check the Technocore connection before publishing a Proof Lab event.");
     const receipt = await publishSigned(event.challenge_id, encodeProofEvent(event));
     await refreshExperiment(event.challenge_id);
-    onNotice({ tone: "good", text: `${successText} Technocore sequence ${String(receipt.posted.seq ?? "unknown")}.` });
+    onNotice({ tone: "good", text: `${successText} Permanent message proof ${receipt.proof_id}. Room sequence ${String(receipt.posted.seq ?? "unknown")} is only a current generation locator.` });
   }
 
   async function createChallenge() {
@@ -254,7 +255,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
   async function publishReceipt() {
     if (!receiptPackage || !experiment.challenge) return;
     await perform("Publishing the safe receipt fingerprint...", () => publishSigned(experiment.room, receiptPackage.announcement), (receipt) => {
-      onNotice({ tone: "good", text: `Receipt fingerprint confirmed at Technocore sequence ${String(receipt.posted.seq ?? "unknown")}.` });
+      onNotice({ tone: "good", text: `Receipt fingerprint confirmed. Permanent message proof ${receipt.proof_id}.` });
     });
   }
 
@@ -401,7 +402,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
 
         {experiment.validations.length > 0 && <section className="panel wide">
           <p className="eyebrow">VALIDATOR DECISIONS</p>
-          <div className="validator-list">{experiment.validations.map((validation) => <article key={validation.did}><span className={`verdict ${validation.verdict}`}>{validation.verdict.toUpperCase()}</span><code>{validation.did}</code><p>{validation.note}</p><small>Technocore sequence {String(validation.seq ?? "unknown")}</small></article>)}</div>
+          <div className="validator-list">{experiment.validations.map((validation) => <article key={validation.did}><span className={`verdict ${validation.verdict}`}>{validation.verdict.toUpperCase()}</span><code>{validation.did}</code><p>{validation.note}</p><small>EVENT ID {validation.contentId}</small><small>Current room sequence {String(validation.seq ?? "unknown")}</small></article>)}</div>
         </section>}
 
         {(experiment.status === "validated" || experiment.status === "contested") && <section className="panel wide proof-finalize">
@@ -409,7 +410,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
           <h2>{isRequester ? "Finalize the portable work record" : "The requester can now finalize the receipt"}</h2>
           <p>The JSON receipt carries the task, result fingerprint, validator decisions, Technocore evidence, and the requester DID signature.</p>
           {isRequester && <div className="button-row"><button className="button primary" disabled={Boolean(working)} onClick={finalizeReceipt}>Create signed public receipt</button>{receiptPackage && <><button className="button" onClick={() => downloadText(receiptPackage.filename, receiptPackage.receiptText)}>Download public receipt JSON</button><button className="button" onClick={downloadCertificate}>Download public certificate PNG</button><button className="button" disabled={!serviceOnline} onClick={publishReceipt}>Publish receipt fingerprint</button></>}</div>}
-          {receiptPackage && <Status tone="good">Receipt SHA-256  {receiptPackage.receiptSha256}</Status>}
+          {receiptPackage && <><Status tone="good">Permanent Proof ID  {receiptPackage.proofId}</Status><Status>Receipt SHA-256  {receiptPackage.receiptSha256}</Status></>}
         </section>}
       </>}
 
@@ -422,7 +423,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
           experiment.commit,
           experiment.reveal,
           ...experiment.validations,
-        ].filter(Boolean).map((record) => <article key={`${record!.event.action}-${record!.did}`}><span>{record!.event.action.toUpperCase()}</span><code>{shortDid(record!.did)}</code><small>SEQ {String(record!.seq ?? "unknown")}</small></article>)}</div>}
+        ].filter(Boolean).map((record) => <article key={`${record!.event.action}-${record!.did}`}><span>{record!.event.action.toUpperCase()}</span><code>{shortDid(record!.did)}</code><small>{record!.contentId}</small><small>ROOM SEQ {String(record!.seq ?? "unknown")}</small></article>)}</div>}
       </section>
 
       <section className="panel wide proof-verify">
