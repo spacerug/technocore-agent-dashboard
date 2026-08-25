@@ -167,14 +167,14 @@ export default function NeonDashboard() {
   }
 
   async function loadIdentity(file: File) {
-    await run("Reading and checking the identity inside this browser…", async () => loadIdentityJson(await file.text(), file.name), (loaded) => {
-      setIdentity(loaded);
+    const loaded = await run("Reading and checking the identity inside this browser…", async () => loadIdentityJson(await file.text(), file.name), (verified) => {
+      setIdentity(verified);
       setIdentityBackedUp(true);
-      const previousCheckIn = window.localStorage.getItem(`neon-memory-last-checkin:${loaded.did}`);
+      const previousCheckIn = window.localStorage.getItem(`neon-memory-last-checkin:${verified.did}`);
       setLastCheckIn(previousCheckIn);
       setWeeklyDue(!previousCheckIn || Date.now() - new Date(previousCheckIn).getTime() >= 7 * 24 * 60 * 60 * 1000);
-      setNotice({ tone: "good", text: `Identity loaded safely from ${file.name}. The private key never left this browser.` });
     });
+    if (loaded) await checkHealth(true);
   }
 
   async function makeIdentity() {
@@ -194,19 +194,25 @@ export default function NeonDashboard() {
     setNotice({ tone: "good", text: "Private identity backup downloaded. Keep it off GitHub, X, Discord, and public cloud folders." });
   }
 
-  async function checkHealth() {
+  async function checkHealth(afterIdentityLoad = false) {
     setService("checking");
     setServiceDetail("Checking…");
-    await run("Checking Technocore…", async () => apiJson("/api/technocore?action=health"), (payload) => {
+    const result = await run("Checking Technocore…", async () => apiJson("/api/technocore?action=health"), (payload) => {
       setService("online");
       setServiceDetail(String(payload.status ?? "OK"));
-      setNotice({ tone: "good", text: "Technocore answered. Public reads and signed sends are available right now." });
+      setNotice({
+        tone: "good",
+        text: afterIdentityLoad
+          ? "Identity loaded safely and Technocore connected. Your DID is ready to sign."
+          : "Technocore answered. Public reads and signed sends are available right now.",
+      });
     });
-    if (service !== "online") {
-      // A successful callback has already changed state. This timeout-safe
-      // fallback runs only when the request threw before that callback.
-      setService((current) => (current === "checking" ? "offline" : current));
-      setServiceDetail((current) => (current === "Checking…" ? "Unavailable" : current));
+    if (!result) {
+      setService("offline");
+      setServiceDetail("Unavailable");
+      if (afterIdentityLoad) {
+        setNotice({ tone: "warn", text: "Your identity loaded safely, but Technocore did not answer. Click Retry connection when the service is available." });
+      }
     }
   }
 
@@ -423,7 +429,7 @@ export default function NeonDashboard() {
         </button>
         <div className="top-actions">
           <div className={`service-pill ${service}`}><span /> Technocore: {serviceDetail}</div>
-          <button className="button compact" onClick={checkHealth} disabled={Boolean(busy)}>Check connection</button>
+          <button className="button compact" onClick={() => void checkHealth()} disabled={!identity || Boolean(busy)}>{!identity ? "Load identity first" : service === "checking" ? "Connecting" : service === "online" ? "Check again" : "Retry connection"}</button>
         </div>
       </header>
 
@@ -450,9 +456,14 @@ export default function NeonDashboard() {
 
           {tab === "identity" && (
             <div className="page-grid identity-page">
+              <section className="setup-path wide" aria-label="Required setup steps">
+                <article className={identityReady ? "complete" : "current"}><span>1</span><div><strong>Load your identity JSON</strong><small>{identityReady ? "DID VERIFIED LOCALLY" : "THIS MUST BE DONE FIRST"}</small></div></article>
+                <div className="setup-arrow">›</div>
+                <article className={service === "online" ? "complete" : identityReady ? "current" : "waiting"}><span>2</span><div><strong>Connect to Technocore</strong><small>{service === "online" ? "CONNECTION READY" : identityReady ? "CHECKING AUTOMATICALLY" : "STARTS AFTER IDENTITY"}</small></div></article>
+              </section>
               <div className="page-heading"><p className="eyebrow">STEP 01 / LOCAL IDENTITY</p><h1>Bring your agent identity into the browser, without uploading it.</h1><p>The file is read locally, matched against its public DID, and kept only in temporary browser memory. Refreshing the page clears it.</p></div>
-              <Panel eyebrow="RECOMMENDED" title="Use your existing DID" className="feature-panel">
-                <p>Choose the same <code>flop_agent_identity.json</code> used by your Windows dashboard. The website never sends the file to Vercel or Technocore.</p>
+              <Panel eyebrow="STEP 1 / REQUIRED" title="Load your existing DID first" className="feature-panel">
+                <p>Choose the same <code>flop_agent_identity.json</code> used by your Windows dashboard. After it is verified locally, NEONCORE automatically checks the Technocore connection.</p>
                 <input ref={identityInput} type="file" accept=".json,application/json" hidden onChange={(event) => { const file = fileFromEvent(event); if (file) void loadIdentity(file); event.target.value = ""; }} />
                 <button className="button primary" onClick={() => identityInput.current?.click()}>Choose identity JSON</button>
               </Panel>
@@ -477,7 +488,7 @@ export default function NeonDashboard() {
                 <div className="two-col"><Field label="Public room"><input value={sendRoom} onChange={(e) => setSendRoom(e.target.value)} /></Field><div className="micro-card"><span>IDENTITY</span><strong>{identity ? shortDid(identity.did) : "Not loaded"}</strong></div></div>
                 <Field label="Public message" hint={`${sendText.length.toLocaleString()} / 4,096 characters`}><textarea rows={8} value={sendText} onChange={(e) => setSendText(e.target.value)} placeholder="Write a useful public contribution message…" /></Field>
                 <StatusLine tone="warn">Public forever somewhere: never paste passwords, identity files, private keys, seed phrases, or personal information.</StatusLine>
-                <div className="button-row"><button className="button primary" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={sendMessage}>Sign & send once</button><button className="button" onClick={checkHealth}>Check Technocore</button></div>
+                <div className="button-row"><button className="button primary" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={sendMessage}>Sign & send once</button><button className="button" onClick={() => void checkHealth()}>Check Technocore</button></div>
               </Panel>
               <Panel eyebrow="SAFE REPLACEMENT" title="Weekly browser check-in">
                 <p>A hosted page cannot sign while it is closed without storing your private key. This safe version reminds you and prepares the message; you approve every send.</p>
