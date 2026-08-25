@@ -32,10 +32,14 @@
   ],
   "exclude": [
     "node_modules",
+    "build",
+    "scripts",
+    "tests",
+    ".openai",
+    "web",
     "db",
     "examples",
     "worker",
-    "scripts",
     "drizzle.config.ts",
     "vite.config.ts"
   ]
