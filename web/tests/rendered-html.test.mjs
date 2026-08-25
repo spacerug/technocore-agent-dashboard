@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-test("renders Neon Memory metadata without starter markers", async () => {
+test("renders NEONCORE metadata without starter markers", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -24,8 +24,8 @@ test("renders Neon Memory metadata without starter markers", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /<title>Neon Memory Passport<\/title>/i);
-  assert.match(html, /NEON MEMORY/i);
+  assert.match(html, /<title>NEONCORE \| Sovereign Agent Console<\/title>/i);
+  assert.match(html, /NEONCORE/i);
   assert.doesNotMatch(html, /Starter Project/i);
   assert.doesNotMatch(html, /codex-preview/i);
 });

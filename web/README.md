@@ -1,9 +1,10 @@
-# Neon Memory Passport
+# NEONCORE
 
-A local-first browser edition of the Technocore Agent Dashboard. It lets a
-visitor load or generate an Ed25519 `did:key`, send signed Technocore messages,
-read public rooms, create and verify pre-genesis artifact certificates, and
-create or restore portable encrypted Agent Memory Passports.
+The sovereign operating system for digital agents. NEONCORE is a local-first
+browser edition of the Technocore Agent Dashboard. It lets a visitor load or
+generate an Ed25519 `did:key`, send signed Technocore messages, read public
+rooms, create and verify pre-genesis artifact certificates, and create or
+restore portable encrypted Agent Memory Passports.
 
 ## Security architecture
 

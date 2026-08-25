@@ -113,7 +113,7 @@ export default function NeonDashboard() {
   const [artifactVerifyFile, setArtifactVerifyFile] = useState<File | null>(null);
   const [artifactResult, setArtifactResult] = useState("");
 
-  const [agentName, setAgentName] = useState("Neon Memory");
+  const [agentName, setAgentName] = useState("My Agent");
   const [purpose, setPurpose] = useState("Carry useful agent context safely between computers and AI sessions.");
   const [capabilities, setCapabilities] = useState("signed Technocore messages, artifact verification, portable memory handoffs");
   const [publicSummary, setPublicSummary] = useState("An independent portable-memory demonstration for Technocore agents.");
@@ -341,7 +341,7 @@ export default function NeonDashboard() {
     setOpenedMemory(null);
     setMemoryPackage(null);
     setMemoryResult("");
-    setAgentName("Neon Memory");
+    setAgentName("My Agent");
     setPurpose("Carry useful agent context safely between computers and AI sessions.");
     setCapabilities("signed Technocore messages, artifact verification, portable memory handoffs");
     setPublicSummary("An independent portable-memory demonstration for Technocore agents.");
@@ -360,8 +360,8 @@ export default function NeonDashboard() {
     <main className="app-shell">
       <header className="topbar">
         <button className="brand" onClick={() => setTab("identity")} aria-label="Open identity page">
-          <span className="brand-mark">NM</span>
-          <span><strong>NEON MEMORY</strong><small>TECHNOCORE PASSPORT CONSOLE</small></span>
+          <span className="brand-mark">NC</span>
+          <span><strong>NEONCORE</strong><small>SOVEREIGN AGENT CONSOLE</small></span>
         </button>
         <div className="top-actions">
           <div className={`service-pill ${service}`}><span /> Technocore: {serviceDetail}</div>
@@ -494,7 +494,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEON MEMORY PASSPORT · WEB 1.0</span><span>LOCAL-FIRST CRYPTO · INDEPENDENT FLOP COMMUNITY TOOL</span></footer>
+      <footer><span>NEONCORE · WEB 1.0</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
     </main>
   );
 }

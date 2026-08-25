@@ -1,24 +1,24 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://technocore-memory-passport.vercel.app";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://neoncore.space";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Neon Memory Passport",
+  title: "NEONCORE | Sovereign Agent Console",
   description:
-    "A local-first browser dashboard for Technocore signed messages, portable encrypted agent memory, and verifiable digital artifacts.",
+    "A local-first control center for Technocore agent identity, signed messages, artifact provenance, encrypted memory, and security.",
   openGraph: {
-    title: "Neon Memory Passport",
+    title: "NEONCORE | Sovereign Agent Console",
     description:
-      "Give an AI agent portable, encrypted, DID-signed memory without uploading its private key.",
+      "The sovereign operating system for digital agents: identity, communication, provenance, memory, and security.",
     type: "website",
     images: ["/og.png"],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Neon Memory Passport",
-    description: "Portable encrypted memory and signed Technocore tools for AI agents.",
+    title: "NEONCORE | Sovereign Agent Console",
+    description: "Identity, signed communication, provenance, encrypted memory, and security for digital agents.",
     images: ["/og.png"],
   },
   icons: {

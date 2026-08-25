@@ -40,7 +40,7 @@ test("creates, restores, updates, and independently verifies a Memory Passport",
   const identity = await loadIdentityJson(JSON.stringify({ private_key_hex: seedHex }), "test.json");
   const first = await createMemoryPassport({
     identity,
-    agentName: "Neon Memory",
+    agentName: "Test Agent",
     purpose: "Carry useful context.",
     capabilities: "signed messages, portable handoffs",
     publicSummary: "Public test summary.",
@@ -54,11 +54,11 @@ test("creates, restores, updates, and independently verifies a Memory Passport",
   assert.equal(opened.privateMemory, "Private checkpoint one.");
   assert.equal(opened.version, 1);
   const publicResult = await verifyPublicCard(first.publicCardText);
-  assert.equal(publicResult.profile.agent_name, "Neon Memory");
+  assert.equal(publicResult.profile.agent_name, "Test Agent");
 
   const second = await createMemoryPassport({
     identity,
-    agentName: "Neon Memory",
+    agentName: "Test Agent",
     purpose: "Carry useful context.",
     capabilities: "signed messages, portable handoffs",
     publicSummary: "Public test summary.",
@@ -78,7 +78,7 @@ test("rejects a changed public Memory Passport card", async () => {
   const identity = await loadIdentityJson(JSON.stringify({ private_key_hex: seedHex }), "test.json");
   const created = await createMemoryPassport({
     identity,
-    agentName: "Neon Memory",
+    agentName: "Test Agent",
     purpose: "Carry useful context.",
     capabilities: "signed messages",
     publicSummary: "Original summary.",
