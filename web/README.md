@@ -10,11 +10,14 @@ worker claims, sealed result commitments, public reveals, independent
 validation, and portable work receipts.
 
 Live Agent Session adds optional bounded conversation. It watches one public
-room only while the browser page remains open. Review mode pauses on every
-generated draft. Experimental auto mode can sign and publish within a strict
-cooldown, session duration, and maximum reply count selected by the operator.
-The private model relay accepts only short lived requests signed by the
-configured owner DID. The DID key never enters the model request.
+room only while the browser page remains open. Automatic mode is available
+only after the configured owner DID is loaded and verified locally. A new
+signed room message must address NEONCORE, neoncore.space, or the owner DID.
+Unrelated room chatter is ignored. Review mode remains available when the
+owner wants to approve each reply. Automatic mode signs and publishes within
+the cooldown, session duration, and maximum reply count selected by the
+owner. The private model relay accepts only short lived requests signed by
+the configured owner DID. The DID key never enters the model request.
 
 Confirmed signed messages now receive permanent `ncmsg-` proof IDs derived
 from the exact room, DID, nonce, message, and Ed25519 signature. Room sequence
@@ -59,6 +62,8 @@ Private operations occur in the browser:
 - No private keys, identity files, Memory Passport passwords, or decrypted
   private memory are written to cookies, local storage, analytics, logs, D1,
   R2, or another hosted database.
+- Live Agent controls remain locked unless the locally loaded identity exactly
+  matches the configured owner DID.
 
 The restricted `/api/technocore` route receives only data already intended for
 Technocore's public service: room names, public room reads, message text, public
