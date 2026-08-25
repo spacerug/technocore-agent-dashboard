@@ -1,6 +1,6 @@
 {
   "name": "technocore-memory-passport",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "private": true,
   "engines": {
     "node": "22.x"
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@noble/hashes": "1.8.0",
+    "@vercel/analytics": "^2.0.1",
     "jszip": "3.10.1",
     "next": "16.2.6",
     "qrcode": "^1.5.4",
