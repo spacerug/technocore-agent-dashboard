@@ -22,7 +22,7 @@ export type WatchedProof = {
 };
 
 const WATCH_SCHEMA = "neoncore/proof-watch/v1" as const;
-const ROOM_PATTERN = /^poui-[0-9a-f]{12}$/;
+const ROOM_PATTERN = /^(?:proof|poui)-[0-9a-f]{12}$/;
 const STATUSES: ProofExperiment["status"][] = [
   "empty",
   "open",
@@ -63,6 +63,7 @@ function isWatchedProof(value: unknown): value is WatchedProof {
 function acceptedEvents(experiment: ProofExperiment) {
   return [
     experiment.challenge,
+    experiment.checkpoint,
     experiment.claim,
     experiment.commit,
     experiment.reveal,

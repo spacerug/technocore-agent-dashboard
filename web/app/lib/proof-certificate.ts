@@ -48,7 +48,7 @@ function splitHash(hash: string): [string, string] {
 }
 
 export async function createProofCertificatePng(data: ProofCertificateData): Promise<Blob> {
-  if (!/^poui-[0-9a-f]{12}$/.test(data.challengeId)) throw new Error("The work receipt challenge identity is invalid.");
+  if (!/^(?:proof|poui)-[0-9a-f]{12}$/.test(data.challengeId)) throw new Error("The work receipt challenge identity is invalid.");
   if (!/^[0-9a-f]{64}$/.test(data.resultSha256) || !/^[0-9a-f]{64}$/.test(data.receiptSha256)) {
     throw new Error("The work receipt fingerprints are invalid.");
   }

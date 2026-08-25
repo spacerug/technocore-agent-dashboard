@@ -4,6 +4,7 @@ import test from "node:test";
 import { loadIdentityJson } from "../app/lib/browser-crypto";
 import {
   createClaimEvent,
+  createCheckpointEvent,
   createCommitEvent,
   createProofChallenge,
   createProofReceipt,
@@ -33,9 +34,13 @@ test("reconstructs a complete independently validated useful inference experimen
     validatorsRequired: 1,
   });
   const messages = [{ seq: 1, from: requester.did, nonce: 1, ts: "2026-08-25T00:00:00Z", text: encodeProofEvent(challenge.event) }];
+  const checkpoint = createCheckpointEvent(challenge.event);
+  messages.push({ seq: 2, from: requester.did, nonce: 2, ts: "2026-08-25T00:00:01Z", text: encodeProofEvent(checkpoint) });
   let experiment = await reconstructProofExperiment(challenge.room, messages);
+  assert.match(challenge.room, /^proof-[0-9a-f]{12}$/);
+  assert.equal(experiment.checkpoint?.did, requester.did);
   const claim = createClaimEvent(experiment, worker.did);
-  messages.push({ seq: 2, from: worker.did, nonce: 2, ts: "2026-08-25T00:01:00Z", text: encodeProofEvent(claim) });
+  messages.push({ seq: 3, from: worker.did, nonce: 3, ts: "2026-08-25T00:01:00Z", text: encodeProofEvent(claim) });
   experiment = await reconstructProofExperiment(challenge.room, messages);
 
   const committed = await createCommitEvent({
@@ -46,10 +51,10 @@ test("reconstructs a complete independently validated useful inference experimen
     declaredComputeGflop: 425.5,
     runtimeSeconds: 18,
   });
-  messages.push({ seq: 3, from: worker.did, nonce: 3, ts: "2026-08-25T00:02:00Z", text: encodeProofEvent(committed.event) });
+  messages.push({ seq: 4, from: worker.did, nonce: 4, ts: "2026-08-25T00:02:00Z", text: encodeProofEvent(committed.event) });
   experiment = await reconstructProofExperiment(challenge.room, messages);
   const reveal = await createRevealEvent(experiment, committed.privateReveal, worker.did);
-  messages.push({ seq: 4, from: worker.did, nonce: 4, ts: "2026-08-25T00:03:00Z", text: encodeProofEvent(reveal) });
+  messages.push({ seq: 5, from: worker.did, nonce: 5, ts: "2026-08-25T00:03:00Z", text: encodeProofEvent(reveal) });
   experiment = await reconstructProofExperiment(challenge.room, messages);
   const validation = createValidationEvent({
     experiment,
@@ -57,7 +62,7 @@ test("reconstructs a complete independently validated useful inference experimen
     verdict: "pass",
     note: "I checked the answer against the public criteria.",
   });
-  messages.push({ seq: 5, from: validator.did, nonce: 5, ts: "2026-08-25T00:04:00Z", text: encodeProofEvent(validation) });
+  messages.push({ seq: 6, from: validator.did, nonce: 6, ts: "2026-08-25T00:04:00Z", text: encodeProofEvent(validation) });
   experiment = await reconstructProofExperiment(challenge.room, messages);
 
   assert.equal(experiment.status, "validated");
@@ -106,4 +111,24 @@ test("rejects self dealing between requester, worker, and validator roles", asyn
   });
   const experiment = await reconstructProofExperiment(challenge.room, [{ seq: 1, from: requester.did, text: encodeProofEvent(challenge.event) }]);
   assert.throws(() => createClaimEvent(experiment, requester.did), /cannot claim its own challenge/i);
+});
+
+test("keeps legacy poui rooms readable while new challenges use public proof rooms", async () => {
+  const requester = await loadIdentityJson(JSON.stringify({ private_key_hex: seedHex(9) }), "legacy-requester.json");
+  const created = await createProofChallenge({
+    title: "Legacy room compatibility",
+    task: "Confirm that an existing Proof Lab room still reconstructs.",
+    acceptanceCriteria: "The signed legacy challenge must remain readable.",
+    requestedModel: "Any model",
+    timeLimitMinutes: 10,
+    maxComputeGflop: 10,
+    validatorsRequired: 1,
+  });
+  const legacyRoom = created.room.replace(/^proof-/, "poui-");
+  const legacyEvent = { ...created.event, challenge_id: legacyRoom };
+  const rebuilt = await reconstructProofExperiment(legacyRoom, [
+    { seq: 1, from: requester.did, nonce: 1, text: encodeProofEvent(legacyEvent) },
+  ]);
+  assert.equal(rebuilt.challenge?.event.challenge_id, legacyRoom);
+  assert.equal(rebuilt.status, "open");
 });

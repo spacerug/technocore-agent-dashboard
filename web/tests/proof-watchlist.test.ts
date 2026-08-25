@@ -46,6 +46,7 @@ function experiment(status: ProofExperiment["status"] = "open"): ProofExperiment
   return {
     room,
     challenge: base,
+    checkpoint: null,
     claim,
     commit: null,
     reveal: null,

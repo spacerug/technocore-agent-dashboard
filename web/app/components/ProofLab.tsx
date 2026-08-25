@@ -5,12 +5,14 @@ import { BrowserIdentity, downloadText, prettyJson, shortDid, validateRoom } fro
 import { downloadBlob } from "../lib/artifact";
 import {
   createClaimEvent,
+  createCheckpointEvent,
   createCommitEvent,
   createProofChallenge,
   createProofReceipt,
   createRevealEvent,
   createValidationEvent,
   encodeProofEvent,
+  isProofLabRoom,
   parsePrivateReveal,
   PrivateReveal,
   ProofEvent,
@@ -54,6 +56,7 @@ function emptyExperiment(room = ""): ProofExperiment {
   return {
     room,
     challenge: null,
+    checkpoint: null,
     claim: null,
     commit: null,
     reveal: null,
@@ -257,7 +260,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
 
   async function refreshExperiment(roomValue = roomInput, preserveReceipt = false): Promise<ProofExperiment> {
     const room = validateRoom(roomValue);
-    if (!room.startsWith("poui-")) throw new Error("A Proof Lab room begins with poui followed by its challenge fingerprint.");
+    if (!isProofLabRoom(room)) throw new Error("A Proof Lab room begins with proof, or the legacy poui prefix, followed by its challenge fingerprint.");
     const rebuilt = await reconstructProofExperiment(room, await readRoomMessages(room));
     showExperiment(rebuilt, preserveReceipt);
     rememberExperiment(rebuilt);
@@ -345,7 +348,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
     setWatchedProofs(stored);
     setWatchReady(true);
     const lastRoom = window.localStorage.getItem(PROOF_LAST_ROOM_KEY);
-    if (!lastRoom || !/^poui-[0-9a-f]{12}$/.test(lastRoom)) return () => { cancelled = true; };
+    if (!lastRoom || !isProofLabRoom(lastRoom)) return () => { cancelled = true; };
     setRoomInput(lastRoom);
     void (async () => {
       try {
@@ -385,13 +388,28 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
       validatorsRequired,
     }), async (created) => {
       setRoomInput(created.room);
-      await publishEvent(created.event, "Challenge opened.");
+      const challengeReceipt = await publishSigned(created.room, encodeProofEvent(created.event));
+      const checkpointReceipt = await publishSigned(created.room, encodeProofEvent(createCheckpointEvent(created.event)));
+      await refreshExperiment(created.room);
+      onNotice({
+        tone: "good",
+        text: `Challenge opened and its signed checkpoint was confirmed. Permanent message proofs ${challengeReceipt.proof_id} and ${checkpointReceipt.proof_id}.`,
+      });
     });
   }
 
   async function claimChallenge() {
     if (!identity) return;
     await perform("Publishing the signed worker claim...", async () => createClaimEvent(experiment, identity.did), (event) => publishEvent(event, "Worker claim confirmed."));
+  }
+
+  async function checkpointChallenge() {
+    if (!experiment.challenge) return;
+    await perform(
+      "Publishing the requester checkpoint...",
+      async () => createCheckpointEvent(experiment.challenge!.event),
+      (event) => publishEvent(event, "Requester checkpoint confirmed."),
+    );
   }
 
   async function commitResult() {
@@ -549,7 +567,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
           <p>Share the room name with workers and validators. Every accepted action must come from a signed DID.</p>
         </div>
         <div className="proof-room-entry">
-          <Field label="Proof Lab room"><input value={roomInput} onChange={(event) => setRoomInput(event.target.value)} placeholder="poui-123456789abc" /></Field>
+          <Field label="Proof Lab room"><input value={roomInput} onChange={(event) => setRoomInput(event.target.value)} placeholder="proof-123456789abc" /></Field>
           <button className="button primary" disabled={!roomInput || Boolean(working)} onClick={() => void perform("Rebuilding the public experiment record...", () => refreshExperiment(), (loaded) => {
             onNotice({ tone: loaded.challenge ? "good" : "warn", text: loaded.challenge ? "Experiment loaded from signed room events." : "No valid challenge was found in this room." });
           })}>Load experiment</button>
@@ -595,7 +613,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
             <div><span>ACCEPTANCE CRITERIA</span><p>{definition?.acceptance_criteria}</p></div>
             <div className="proof-specs"><code>MODEL  {definition?.requested_model}</code><code>TIME  {definition?.time_limit_minutes} MIN</code><code>MAX COMPUTE  {definition?.max_compute_gflop} GFLOP</code></div>
           </div>
-          <div className="button-row"><button className="button" disabled={Boolean(working)} onClick={() => void perform("Refreshing signed room events...", () => refreshExperiment(), () => onNotice({ tone: "good", text: "Experiment refreshed." }))}>Refresh experiment</button><button className="button" onClick={() => navigator.clipboard.writeText(experiment.room)}>Copy room name</button></div>
+          <div className="button-row"><button className="button" disabled={Boolean(working)} onClick={() => void perform("Refreshing signed room events...", () => refreshExperiment(), () => onNotice({ tone: "good", text: "Experiment refreshed." }))}>Refresh experiment</button><button className="button" onClick={() => navigator.clipboard.writeText(experiment.room)}>Copy room name</button>{isRequester && !experiment.checkpoint && <button className="button primary" disabled={!serviceOnline || Boolean(working)} onClick={checkpointChallenge}>Publish signed checkpoint</button>}</div>
         </section>
 
         {experiment.status === "open" && <section className="panel wide proof-role-card">
@@ -661,6 +679,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
         <h2>Accepted protocol events</h2>
         {!experiment.challenge ? <Status>No experiment loaded.</Status> : <div className="proof-timeline">{[
           experiment.challenge,
+          experiment.checkpoint,
           experiment.claim,
           experiment.commit,
           experiment.reveal,

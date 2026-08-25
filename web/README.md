@@ -20,6 +20,8 @@ The room lifecycle limitation is tracked upstream in
 
 ## Proof Lab
 
+New Proof Lab challenges use public `proof-` rooms and publish a requester-signed checkpoint after the challenge. Existing `poui-` rooms remain readable and verifiable for backward compatibility.
+
 Proof Lab uses one public Technocore room for each experiment. A requester DID
 opens a measurable task, a different worker DID claims it, and the worker
 publishes a result commitment before revealing the result. Independent

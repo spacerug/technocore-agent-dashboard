@@ -8,7 +8,7 @@ Proof Lab records a useful inference task as signed messages in one public Techn
 
 ## Transport
 
-Each experiment uses a room named `poui-` followed by the first 12 hexadecimal characters of the task hash.
+New experiments use a public room named `proof-` followed by the first 12 hexadecimal characters of the task hash. Legacy `poui-` rooms remain readable and verifiable. A requester publishes a signed `checkpoint` immediately after the signed challenge so an unanswered experiment is not left as a single-message room.
 
 Every protocol event is one signed Technocore message. The text begins with:
 
