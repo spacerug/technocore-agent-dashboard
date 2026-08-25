@@ -8,6 +8,7 @@ import {
   generateIdentity,
   identityJson,
   loadIdentityJson,
+  prettyJson,
   shortDid,
   signTechnocoreMessage,
   validateRoom,
@@ -26,18 +27,21 @@ import {
   MemoryCertificateData,
   memoryCertificateFilename,
 } from "../lib/memory-certificate";
-import {
-  createTechnocoreReceipt,
-  TechnocoreReceipt,
-  technocoreReceiptFilename,
-  technocoreReceiptText,
-  verifyTechnocoreReceipt,
-} from "../lib/technocore-receipt";
 import ProofLab from "./ProofLab";
 
 type Tab = "identity" | "send" | "room" | "artifact" | "memory" | "proof" | "safety";
 type ServiceState = "unchecked" | "checking" | "online" | "offline";
 type RoomMessage = { seq?: number; ts?: string; from?: string; nonce?: number | string; text?: string };
+type Receipt = {
+  confirmed: true;
+  room: string;
+  did: string;
+  nonce: number;
+  text: string;
+  posted: RoomMessage;
+  detail: string;
+  saved_at: string;
+};
 
 const NAV: Array<{ id: Tab; number: string; label: string; note: string }> = [
   { id: "identity", number: "01", label: "Identity", note: "Load locally" },
@@ -100,9 +104,7 @@ export default function NeonDashboard() {
 
   const [sendRoom, setSendRoom] = useState("technocore");
   const [sendText, setSendText] = useState("");
-  const [lastReceipt, setLastReceipt] = useState<TechnocoreReceipt | null>(null);
-  const [messageReceiptVerification, setMessageReceiptVerification] = useState("");
-  const messageReceiptInput = useRef<HTMLInputElement>(null);
+  const [lastReceipt, setLastReceipt] = useState<Receipt | null>(null);
   const [lastCheckIn, setLastCheckIn] = useState<string | null>(null);
   const [weeklyDue, setWeeklyDue] = useState(true);
 
@@ -120,7 +122,7 @@ export default function NeonDashboard() {
   const [artifactResult, setArtifactResult] = useState("");
 
   const [agentName, setAgentName] = useState("My Agent");
-  const [purpose, setPurpose] = useState("Carry useful agent context safely between computers and agent sessions.");
+  const [purpose, setPurpose] = useState("Carry useful agent context safely between computers and AI sessions.");
   const [capabilities, setCapabilities] = useState("signed Technocore messages, artifact verification, portable memory handoffs");
   const [publicSummary, setPublicSummary] = useState("An independent portable-memory demonstration for Technocore agents.");
   const [privateMemory, setPrivateMemory] = useState("Completed work:\nCurrent task:\nImportant decisions:\nNext task:\nPrivate notes:");
@@ -233,7 +235,7 @@ export default function NeonDashboard() {
     return Array.isArray(payload.messages) ? (payload.messages as RoomMessage[]) : [];
   }
 
-  async function publishSigned(roomValue: string, textValue: string): Promise<TechnocoreReceipt> {
+  async function publishSigned(roomValue: string, textValue: string): Promise<Receipt> {
     if (!identity || !identityReady) throw new Error("Load an identity and finish its backup first.");
     if (service !== "online") throw new Error("Check Technocore and wait for Online before sending.");
     const room = validateRoom(roomValue);
@@ -249,31 +251,28 @@ export default function NeonDashboard() {
       body: JSON.stringify(signed),
     });
     const posted = (response.posted ?? {}) as RoomMessage;
-    const receipt = await createTechnocoreReceipt({
-      signed,
+    return {
+      confirmed: true,
+      room,
+      did: identity.did,
+      nonce,
+      text,
       posted: { seq: posted.seq, ts: posted.ts, from: posted.from, nonce: posted.nonce, text: posted.text },
       detail: String(response.detail ?? "Confirmed"),
-    });
-    setLastReceipt(receipt);
-    return receipt;
+      saved_at: new Date().toISOString(),
+    };
   }
 
   async function sendMessage() {
     await run("Signing locally, sending, and checking the public receipt…", () => publishSigned(sendRoom, sendText), (receipt) => {
+      setLastReceipt(receipt);
       if (identity) {
         const confirmedAt = new Date().toISOString();
         window.localStorage.setItem(`neon-memory-last-checkin:${identity.did}`, confirmedAt);
         setLastCheckIn(confirmedAt);
         setWeeklyDue(false);
       }
-      setNotice({ tone: "good", text: `Signed message confirmed. Permanent proof ID ${receipt.proof_id}. Download the safe receipt to preserve it.` });
-    });
-  }
-
-  async function verifyMessageReceipt(file: File) {
-    await run("Verifying the permanent proof ID and DID signature…", async () => verifyTechnocoreReceipt(await file.text()), (receipt) => {
-      setMessageReceiptVerification(`VERIFIED · ${receipt.proof_id}`);
-      setNotice({ tone: "good", text: "The permanent proof ID, content hash, and DID signature are valid." });
+      setNotice({ tone: "good", text: `Signed message confirmed in #${receipt.room}, sequence ${String(receipt.posted.seq ?? "unknown")}.` });
     });
   }
 
@@ -304,7 +303,8 @@ export default function NeonDashboard() {
   async function publishArtifact() {
     if (!artifactPackage) return;
     await run("Publishing the safe artifact declaration…", () => publishSigned("technocore", artifactPackage.announcement), (receipt) => {
-      setNotice({ tone: "good", text: `Artifact declaration confirmed. Permanent proof ID ${receipt.proof_id}.` });
+      setLastReceipt(receipt);
+      setNotice({ tone: "good", text: `Artifact declaration confirmed at Technocore sequence ${String(receipt.posted.seq ?? "unknown")}.` });
     });
   }
 
@@ -401,7 +401,7 @@ export default function NeonDashboard() {
     setMemoryCertificate(null);
     setMemoryResult("");
     setAgentName("My Agent");
-    setPurpose("Carry useful agent context safely between computers and agent sessions.");
+    setPurpose("Carry useful agent context safely between computers and AI sessions.");
     setCapabilities("signed Technocore messages, artifact verification, portable memory handoffs");
     setPublicSummary("An independent portable-memory demonstration for Technocore agents.");
     setPrivateMemory("Completed work:\nCurrent task:\nImportant decisions:\nNext task:\nPrivate notes:");
@@ -410,7 +410,8 @@ export default function NeonDashboard() {
   async function publishMemory() {
     if (!memoryPackage) return;
     await run("Publishing only the safe memory fingerprint declaration…", () => publishSigned("technocore", memoryPackage.announcement), (receipt) => {
-      setNotice({ tone: "good", text: `Memory checkpoint confirmed. Permanent proof ID ${receipt.proof_id}. Private memory was not sent.` });
+      setLastReceipt(receipt);
+      setNotice({ tone: "good", text: `Memory checkpoint confirmed at Technocore sequence ${String(receipt.posted.seq ?? "unknown")}. Private memory was not sent.` });
     });
   }
 
@@ -484,23 +485,8 @@ export default function NeonDashboard() {
                 <StatusLine tone={weeklyDue ? "warn" : "good"}>{weeklyDue ? "A manual check-in is available." : `Last confirmed: ${lastCheckIn ? new Date(lastCheckIn).toLocaleString() : "none"}`}</StatusLine>
                 <button className="button" onClick={fillWeeklyCheckIn}>Prepare weekly message</button>
               </Panel>
-              <Panel title="Permanent message proof">
-                {lastReceipt ? <>
-                  <StatusLine tone="good">Confirmed, permanent proof created</StatusLine>
-                  <div className="did-block"><span>PROOF ID</span><code>{lastReceipt.proof_id}</code></div>
-                  <p>Room sequence {String(lastReceipt.posted.seq ?? "unknown")} is only a location hint for the current room generation. The proof ID and DID signature remain verifiable if that counter restarts.</p>
-                  <div className="button-row">
-                    <button className="button" onClick={() => navigator.clipboard.writeText(lastReceipt.proof_id)}>Copy proof ID</button>
-                    <button className="button" onClick={() => downloadText(technocoreReceiptFilename(lastReceipt), technocoreReceiptText(lastReceipt))}>Download safe receipt</button>
-                  </div>
-                </> : <StatusLine>No message has been confirmed in this browser session.</StatusLine>}
-                <input ref={messageReceiptInput} type="file" accept=".json,application/json" hidden onChange={(event) => {
-                  const file = fileFromEvent(event);
-                  if (file) void verifyMessageReceipt(file);
-                  event.target.value = "";
-                }} />
-                <button className="button" onClick={() => messageReceiptInput.current?.click()}>Verify a saved receipt</button>
-                {messageReceiptVerification && <StatusLine tone="good">{messageReceiptVerification}</StatusLine>}
+              <Panel title="Last public receipt">
+                {lastReceipt ? <><StatusLine tone="good">Confirmed · #{String(lastReceipt.posted.seq ?? "unknown")} in {lastReceipt.room}</StatusLine><button className="button" onClick={() => downloadText(`technocore-${lastReceipt.room}-seq-${String(lastReceipt.posted.seq ?? "unknown")}.json`, prettyJson(lastReceipt))}>Download safe receipt</button></> : <StatusLine>No message has been confirmed in this browser session.</StatusLine>}
               </Panel>
             </div>
           )}
@@ -579,7 +565,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.2</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
+      <footer><span>NEONCORE · WEB 2.0</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
     </main>
   );
 }

@@ -32,10 +32,6 @@
   ],
   "exclude": [
     "node_modules",
-    "build",
-    "scripts",
-    "tests",
-    "web",
     "db",
     "examples",
     "worker",
