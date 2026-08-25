@@ -216,15 +216,10 @@ export default function NeonDashboard() {
     if (service !== "online") throw new Error("Check Technocore and wait for Online before sending.");
     const room = validateRoom(roomValue);
     const text = cleanText(textValue);
-    const before = await fetchRoom(room, false);
-    const roomMessages = Array.isArray(before.messages) ? (before.messages as RoomMessage[]) : [];
-    let serverLast = 0;
-    for (const message of roomMessages) {
-      if (message.from === identity.did && /^\d+$/.test(String(message.nonce ?? ""))) {
-        serverLast = Math.max(serverLast, Number(message.nonce));
-      }
-    }
-    const nonce = Math.max(Date.now(), serverLast + 1);
+    // Millisecond timestamps match the original desktop agent's nonce format.
+    // Avoid a mandatory room read here: Technocore can be healthy while a
+    // heavily used room is temporarily overloaded.
+    const nonce = Date.now();
     const signed = await signTechnocoreMessage(identity, room, nonce, text);
     const response = await apiJson("/api/technocore", {
       method: "POST",

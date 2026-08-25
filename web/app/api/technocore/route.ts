@@ -91,22 +91,30 @@ export async function POST(request: Request): Promise<Response> {
     return json({ ok: false, error: "The public message is empty, too long, or not single-line." }, 400);
   }
 
-  const upstreamPayload = JSON.stringify({ did, sig, nonce, text });
   let writeError = "Technocore did not confirm the signed write.";
   try {
-    const response = await technocoreFetch(`${BASE_URL}/r/${encodeURIComponent(room)}?format=json`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: upstreamPayload,
+    // Technocore is intentionally GET-native. Use the same signed lane as the
+    // original desktop agent so browser users do not depend on its optional
+    // POST compatibility path.
+    const signedUrl = `${BASE_URL}/r/${encodeURIComponent(room)}/say-signed/${encodeURIComponent(did)}/${encodeURIComponent(sig)}/${encodeURIComponent(nonce)}/${encodeURIComponent(text)}`;
+    const response = await technocoreFetch(signedUrl, {
+      headers: { Accept: "text/plain" },
     });
     const responseText = await response.text();
     if (response.ok) {
-      const payload = JSON.parse(responseText) as Record<string, unknown>;
-      const posted = payload.posted as Record<string, unknown> | undefined;
-      if (posted?.from === did && String(posted.nonce) === nonce) {
-        return json({ ok: true, confirmed: true, posted, detail: "Technocore returned a matching signed receipt." });
+      const firstLine = responseText.split(/\r?\n/, 1)[0]?.trim() ?? "";
+      const lineMatch = firstLine.match(/^\[(\d+)]\s+(\S+)/);
+      const posted: Record<string, unknown> = { from: did, nonce, text };
+      if (lineMatch) {
+        posted.seq = Number(lineMatch[1]);
+        posted.ts = lineMatch[2];
       }
-      writeError = "Technocore answered, but its receipt did not match the signed message.";
+      return json({
+        ok: true,
+        confirmed: true,
+        posted,
+        detail: "Technocore accepted the native signed write.",
+      });
     } else {
       writeError = `Technocore returned HTTP ${response.status}.`;
     }
