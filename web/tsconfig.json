@@ -31,6 +31,7 @@
     "**/*.mts"
   ],
   "exclude": [
+    "web",
     "node_modules",
     "db",
     "examples",
