@@ -149,6 +149,8 @@ input[type="file"]::file-selector-button { margin-right: 12px; padding: 7px 10px
 .link-button { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .button-row { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
 .stack-buttons { display: grid; gap: 8px; margin-top: 12px; }
+.certificate-action { margin-top: 14px; padding: 14px; border: 1px solid #245238; background: linear-gradient(135deg, rgba(17, 58, 34, .6), rgba(4, 16, 9, .9)); }
+.certificate-action p { margin: 0 0 12px; color: #9fc5ab; font-size: 12px; line-height: 1.55; }
 
 .did-block { padding: 15px; border: 1px solid #294435; background: #070c09; }
 .did-block span { display: block; margin-bottom: 8px; color: var(--muted); font: 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .14em; }

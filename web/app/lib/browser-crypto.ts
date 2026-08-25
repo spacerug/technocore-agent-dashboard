@@ -328,7 +328,7 @@ export function cleanText(value: string, maximum = 4096): string {
 export function validateRoom(value: string): string {
   const room = value.trim();
   if (!/^[a-z0-9][a-z0-9_-]{0,47}$/.test(room)) {
-    throw new Error("Room names use lowercase letters, numbers, _ or - and must be 1–48 characters.");
+    throw new Error("Room names use lowercase letters, numbers, _ or -, and must be 1 to 48 characters.");
   }
   return room;
 }

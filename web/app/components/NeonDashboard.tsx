@@ -22,6 +22,11 @@ import {
   openMemoryPassport,
   verifyPublicCard,
 } from "../lib/memory-passport";
+import {
+  createMemoryCertificatePng,
+  MemoryCertificateData,
+  memoryCertificateFilename,
+} from "../lib/memory-certificate";
 
 type Tab = "identity" | "send" | "room" | "artifact" | "memory" | "safety";
 type ServiceState = "unchecked" | "checking" | "online" | "offline";
@@ -122,6 +127,7 @@ export default function NeonDashboard() {
   const [memoryConfirm, setMemoryConfirm] = useState("");
   const [memoryPackage, setMemoryPackage] = useState<MemoryPackage | null>(null);
   const [openedMemory, setOpenedMemory] = useState<OpenedPassport | null>(null);
+  const [memoryCertificate, setMemoryCertificate] = useState<MemoryCertificateData | null>(null);
   const [memoryResult, setMemoryResult] = useState("");
   const memoryPrivateInput = useRef<HTMLInputElement>(null);
   const memoryPublicInput = useRef<HTMLInputElement>(null);
@@ -133,6 +139,15 @@ export default function NeonDashboard() {
   useEffect(() => {
     setLastCheckIn(identity ? window.localStorage.getItem(`neon-memory-last-checkin:${identity.did}`) : null);
   }, [identity]);
+
+  useEffect(() => {
+    const openLinkedSection = () => {
+      if (window.location.hash === "#memory") setTab("memory");
+    };
+    openLinkedSection();
+    window.addEventListener("hashchange", openLinkedSection);
+    return () => window.removeEventListener("hashchange", openLinkedSection);
+  }, []);
 
   const visibleMessages = useMemo(
     () => messages.filter((message) => !onlyMine || (identity && message.from === identity.did)),
@@ -300,6 +315,17 @@ export default function NeonDashboard() {
     (created) => {
       setMemoryPackage(created);
       setOpenedMemory(created.opened);
+      setMemoryCertificate({
+        passportId: created.opened.passportId,
+        version: created.opened.version,
+        agentName: created.opened.profile.agent_name,
+        purpose: created.opened.profile.purpose,
+        publicSummary: created.opened.profile.public_summary,
+        ownerDid: created.opened.ownerDid,
+        privatePassportSha256: created.passportSha256,
+        publicCardSha256: created.publicCardSha256,
+        updatedAt: created.opened.updatedAt,
+      });
       setMemoryPassword("");
       setMemoryConfirm("");
       setMemoryResult(`READY · ${created.opened.passportId} version ${created.opened.version} · ${created.passportSha256.slice(0, 20)}…`);
@@ -312,6 +338,7 @@ export default function NeonDashboard() {
     await run("Verifying the DID signature and decrypting memory locally…", async () => openMemoryPassport(await file.text(), file.name, memoryPassword), (opened) => {
       setOpenedMemory(opened);
       setMemoryPackage(null);
+      setMemoryCertificate(null);
       setAgentName(opened.profile.agent_name);
       setPurpose(opened.profile.purpose);
       setCapabilities(opened.profile.capabilities.join(", "));
@@ -327,14 +354,41 @@ export default function NeonDashboard() {
   async function inspectPublicCard(file: File) {
     await run("Verifying the public card without a password…", async () => verifyPublicCard(await file.text()), (result) => {
       const document = result.document;
+      const passportId = String(document.passport_id ?? "");
+      const version = Number(document.version);
+      const ownerDid = String(document.owner_did ?? "");
+      const privatePassportSha256 = String(document.private_passport_sha256 ?? "");
+      if (!/^mp-[0-9a-f]{16}$/.test(passportId) || !Number.isInteger(version) || version < 1 || !ownerDid.startsWith("did:key:z") || !/^[0-9a-f]{64}$/.test(privatePassportSha256)) {
+        throw new Error("The verified public card is missing certificate details.");
+      }
+      setMemoryCertificate({
+        passportId,
+        version,
+        agentName: result.profile.agent_name,
+        purpose: result.profile.purpose,
+        publicSummary: result.profile.public_summary,
+        ownerDid,
+        privatePassportSha256,
+        publicCardSha256: result.sha256,
+        updatedAt: String(document.updated_at_utc ?? ""),
+      });
       setMemoryResult(`PUBLIC CARD VERIFIED · ${result.profile.agent_name} · version ${String(document.version)} · ${result.sha256.slice(0, 20)}…`);
-      setNotice({ tone: "good", text: "The public card's DID signature is valid. It contains no encrypted or private memory." });
+      setNotice({ tone: "good", text: "The public card's DID signature is valid. A safe certificate image can now be downloaded." });
+    });
+  }
+
+  async function downloadMemoryCertificate() {
+    if (!memoryCertificate) return;
+    await run("Rendering the safe public certificate locally…", () => createMemoryCertificatePng(memoryCertificate), (blob) => {
+      downloadBlob(memoryCertificateFilename(memoryCertificate), blob);
+      setNotice({ tone: "good", text: "Public certificate PNG downloaded. It contains no private memory, password, private key, or ciphertext." });
     });
   }
 
   function startNewMemory() {
     setOpenedMemory(null);
     setMemoryPackage(null);
+    setMemoryCertificate(null);
     setMemoryResult("");
     setAgentName("My Agent");
     setPurpose("Carry useful agent context safely between computers and AI sessions.");
@@ -378,7 +432,7 @@ export default function NeonDashboard() {
               </button>
             ))}
           </nav>
-          <div className="local-only"><strong>LOCAL CRYPTO</strong><p>Secret files are processed in this browser tab—not uploaded to the host.</p></div>
+          <div className="local-only"><strong>LOCAL CRYPTO</strong><p>Secret files are processed in this browser tab, not uploaded to the host.</p></div>
         </aside>
 
         <div className="content">
@@ -387,7 +441,7 @@ export default function NeonDashboard() {
 
           {tab === "identity" && (
             <div className="page-grid identity-page">
-              <div className="page-heading"><p className="eyebrow">STEP 01 / LOCAL IDENTITY</p><h1>Bring your agent identity into the browser—without uploading it.</h1><p>The file is read locally, matched against its public DID, and kept only in temporary browser memory. Refreshing the page clears it.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 01 / LOCAL IDENTITY</p><h1>Bring your agent identity into the browser, without uploading it.</h1><p>The file is read locally, matched against its public DID, and kept only in temporary browser memory. Refreshing the page clears it.</p></div>
               <Panel eyebrow="RECOMMENDED" title="Use your existing DID" className="feature-panel">
                 <p>Choose the same <code>flop_agent_identity.json</code> used by your Windows dashboard. The website never sends the file to Vercel or Technocore.</p>
                 <input ref={identityInput} type="file" accept=".json,application/json" hidden onChange={(event) => { const file = fileFromEvent(event); if (file) void loadIdentity(file); event.target.value = ""; }} />
@@ -429,7 +483,7 @@ export default function NeonDashboard() {
 
           {tab === "room" && (
             <div className="page-grid">
-              <div className="page-heading"><p className="eyebrow">STEP 03 / PUBLIC ROOM READER</p><h1>Read public messages as data—not instructions.</h1><p>Links are deliberately not clickable. Names are self-asserted unless the record contains a signed DID.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 03 / PUBLIC ROOM READER</p><h1>Read public messages as data, not instructions.</h1><p>Links are deliberately not clickable. Names are self-asserted unless the record contains a signed DID.</p></div>
               <Panel title="Room controls" className="wide controls-panel"><div className="room-controls"><Field label="Room"><input value={roomName} onChange={(e) => setRoomName(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Only my DID</label><button className="button primary" onClick={readRoom}>Refresh room</button></div><StatusLine>{roomMeta}</StatusLine></Panel>
               <section className="room-feed wide" aria-label="Public room messages">
                 {visibleMessages.length === 0 ? <div className="empty"><strong>No messages loaded</strong><p>Enter a room and select Refresh room.</p></div> : visibleMessages.map((message, index) => <article key={`${message.seq ?? "x"}-${index}`}><div><span>SEQ {String(message.seq ?? "?")}</span><time>{message.ts ? new Date(message.ts).toLocaleString() : "unknown time"}</time></div><code>{message.from ?? "unsigned"}</code><p>{message.text ?? ""}</p></article>)}
@@ -439,7 +493,7 @@ export default function NeonDashboard() {
 
           {tab === "artifact" && (
             <div className="page-grid">
-              <div className="page-heading"><p className="eyebrow">STEP 04 / SIGNED PROVENANCE</p><h1>Package artwork with a verifiable DID certificate.</h1><p>Hashing, signing, verification, and ZIP creation happen locally. This is provenance—not an NFT mint.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 04 / SIGNED PROVENANCE</p><h1>Package artwork with a verifiable DID certificate.</h1><p>Hashing, signing, verification, and ZIP creation happen locally. This is provenance, not an NFT mint.</p></div>
               <Panel title="Create artifact package" className="wide">
                 <div className="two-col"><Field label="Artwork title"><input value={artifactTitle} onChange={(e) => setArtifactTitle(e.target.value)} /></Field><Field label="Public source URL" hint="Optional GitHub or public source"><input value={artifactSource} onChange={(e) => setArtifactSource(e.target.value)} placeholder="https://…" /></Field></div>
                 <Field label="Artwork image"><input className="file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={(e) => { setArtifactFile(fileFromEvent(e)); setArtifactPackage(null); }} /></Field>
@@ -471,7 +525,8 @@ export default function NeonDashboard() {
                 <div className="stack-buttons"><button className="button" onClick={() => memoryPrivateInput.current?.click()}>Open private passport</button><button className="button" onClick={() => memoryPublicInput.current?.click()}>Verify public card</button></div>
               </Panel>
               <Panel title="Checkpoint files">
-                {memoryPackage ? <><StatusLine tone="good">{memoryResult}</StatusLine><div className="stack-buttons"><button className="button danger" onClick={() => downloadText(memoryPackage.passportFilename, memoryPackage.passportText)}>Download PRIVATE .neonpass</button><button className="button" onClick={() => downloadText(memoryPackage.publicCardFilename, memoryPackage.publicCardText)}>Download SAFE public card</button><button className="button" disabled={service !== "online"} onClick={publishMemory}>Publish safe fingerprint</button></div></> : <StatusLine>{memoryResult || "Create or restore a passport to continue."}</StatusLine>}
+                {memoryPackage ? <><StatusLine tone="good">{memoryResult}</StatusLine><div className="stack-buttons"><button className="button danger" onClick={() => downloadText(memoryPackage.passportFilename, memoryPackage.passportText)}>Download PRIVATE .neonpass</button><button className="button" onClick={() => downloadText(memoryPackage.publicCardFilename, memoryPackage.publicCardText)}>Download SAFE public card</button><button className="button" disabled={service !== "online"} onClick={publishMemory}>Publish safe fingerprint</button></div></> : <StatusLine>{memoryResult || "Create or verify a public card to continue."}</StatusLine>}
+                {memoryCertificate && <div className="certificate-action"><p>Create a human-readable PNG from the verified public details. The image includes fingerprints and a QR link, never private memory.</p><button className="button primary" disabled={Boolean(busy)} onClick={downloadMemoryCertificate}>Download SAFE certificate PNG</button></div>}
                 {openedMemory && <button className="button text-button" onClick={() => { if (window.confirm("The clipboard will contain decrypted private memory. Continue only if you trust the destination.")) void navigator.clipboard.writeText(handoffText(openedMemory)); }}>Copy verified handoff</button>}
               </Panel>
             </div>
@@ -479,10 +534,10 @@ export default function NeonDashboard() {
 
           {tab === "safety" && (
             <div className="page-grid">
-              <div className="page-heading"><p className="eyebrow">STEP 06 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can—and cannot—do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 06 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
               <Panel title="Never leaves your browser"><ul className="check-list"><li>Identity JSON and Ed25519 private key</li><li>Memory Passport passwords</li><li>Decrypted private memory</li><li>Original artwork before you publish it yourself</li></ul></Panel>
               <Panel title="Public data the relay receives"><ul className="public-list"><li>Technocore room and message text</li><li>Public DID, nonce, and signature</li><li>Health and public-room read requests</li></ul></Panel>
-              <Panel title="Important limitations" className="wide"><div className="limits-grid"><p><strong>No unattended weekly signing</strong>A website cannot safely sign after it is closed unless a server stores the private key. This app refuses that design.</p><p><strong>No decentralized storage claim</strong>Passports are portable encrypted files. You control where they are backed up.</p><p><strong>No truth oracle</strong>A valid DID signature proves authorship and integrity—not that every written claim is true.</p><p><strong>Technocore is ephemeral</strong>Keep public cards, artifact packages, and receipts somewhere durable.</p></div></Panel>
+              <Panel title="Important limitations" className="wide"><div className="limits-grid"><p><strong>No unattended weekly signing</strong>A website cannot safely sign after it is closed unless a server stores the private key. This app refuses that design.</p><p><strong>No decentralized storage claim</strong>Passports are portable encrypted files. You control where they are backed up.</p><p><strong>No truth oracle</strong>A valid DID signature proves authorship and integrity, not that every written claim is true.</p><p><strong>Technocore is ephemeral</strong>Keep public cards, artifact packages, and receipts somewhere durable.</p></div></Panel>
               <Panel title="Open source"><p>Inspect, audit, and contribute through the public repository.</p><a className="button primary link-button" href="https://github.com/spacerug/technocore-agent-dashboard" target="_blank" rel="noreferrer">View GitHub repository</a></Panel>
               <Panel title="Before publishing"><p>Never upload <code>flop_agent_identity.json</code>, any <code>.neonpass.json</code> file, passwords, wallet keys, or seed phrases.</p><StatusLine tone="warn">Public DID: safe. Private identity: secret. Public memory card: inspect first. Private passport: keep private.</StatusLine></Panel>
             </div>
