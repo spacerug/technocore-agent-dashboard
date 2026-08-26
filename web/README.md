@@ -33,6 +33,16 @@ numbers remain visible only as current room generation location hints. A saved
 message receipt can be verified locally even if a room is later reaped and its
 sequence counter restarts.
 
+NEONCORE now confirms room inclusion separately from transport success. Before
+it creates a receipt, the server reads the selected room and finds the exact
+public DID, nonce, text, and server sequence. An HTTP success response without
+that exact readback remains unconfirmed and does not create a receipt.
+
+The Identity page also offers an explicit public DID note registration. The
+browser signs the short request locally, and the server writes only the public
+DID to Technocore's current `did-xx` sharded registry. This optional discovery
+step does not upload the identity file or private key.
+
 The room lifecycle limitation is tracked upstream in
 [Technocore issue #139](https://github.com/flop-labs/technocore-chat/issues/139).
 

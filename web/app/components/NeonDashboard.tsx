@@ -8,6 +8,7 @@ import {
   generateIdentity,
   identityJson,
   loadIdentityJson,
+  signBytes,
   shortDid,
   signTechnocoreMessage,
   validateRoom,
@@ -100,6 +101,7 @@ export default function NeonDashboard() {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState<{ tone: "good" | "warn" | "bad"; text: string } | null>(null);
   const identityInput = useRef<HTMLInputElement>(null);
+  const [didNotePath, setDidNotePath] = useState("");
 
   const [sendRoom, setSendRoom] = useState(TECHNOCORE_MAIN_ROOM);
   const [sendText, setSendText] = useState("");
@@ -173,6 +175,7 @@ export default function NeonDashboard() {
     const loaded = await run("Reading and checking the identity inside this browser…", async () => loadIdentityJson(await file.text(), file.name), (verified) => {
       setIdentity(verified);
       setIdentityBackedUp(true);
+      setDidNotePath("");
       const previousCheckIn = window.localStorage.getItem(`neon-memory-last-checkin:${verified.did}`);
       setLastCheckIn(previousCheckIn);
       setWeeklyDue(!previousCheckIn || Date.now() - new Date(previousCheckIn).getTime() >= 7 * 24 * 60 * 60 * 1000);
@@ -184,6 +187,7 @@ export default function NeonDashboard() {
     await run("Generating a new Ed25519 identity locally…", generateIdentity, (created) => {
       setIdentity(created);
       setIdentityBackedUp(false);
+      setDidNotePath("");
       setLastCheckIn(null);
       setWeeklyDue(true);
       setNotice({ tone: "warn", text: "New identity created. Download its private backup before using it. A lost browser identity cannot be recovered." });
@@ -217,6 +221,23 @@ export default function NeonDashboard() {
         setNotice({ tone: "warn", text: "Your identity loaded safely, but Technocore did not answer. Click Retry connection when the service is available." });
       }
     }
+  }
+
+  async function registerDidNote() {
+    if (!identity || !identityReady) return setNotice({ tone: "bad", text: "Load an identity and finish its backup first." });
+    if (service !== "online") return setNotice({ tone: "bad", text: "Connect to Technocore before registering the public DID note." });
+    const nonce = Date.now();
+    const proof = new TextEncoder().encode(`neoncore-did-note|${identity.did}|${nonce}`);
+    const sig = await signBytes(identity, proof);
+    await run("Registering and checking the public DID note...", () => apiJson("/api/technocore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "register_did", did: identity.did, nonce, sig }),
+    }), (payload) => {
+      const path = String(payload.path ?? "");
+      setDidNotePath(path);
+      setNotice({ tone: "good", text: `Public DID note confirmed at ${path}. Your private key never left this browser.` });
+    });
   }
 
   async function fetchRoom(roomValue: string, updateReader = true): Promise<Record<string, unknown>> {
@@ -255,8 +276,7 @@ export default function NeonDashboard() {
     const room = validateRoom(roomValue);
     const text = cleanText(textValue);
     // Millisecond timestamps match the original desktop agent's nonce format.
-    // Avoid a mandatory room read here: Technocore can be healthy while a
-    // heavily used room is temporarily overloaded.
+    // The server requires an exact room readback before it returns confirmed.
     const nonce = Date.now();
     const signed = await signTechnocoreMessage(identity, room, nonce, text);
     const response = await apiJson("/api/technocore", {
@@ -486,6 +506,9 @@ export default function NeonDashboard() {
                   <div className="did-block"><span>PUBLIC DID</span><code>{identity.did}</code></div>
                   <div className="button-row"><button className="button" onClick={() => navigator.clipboard.writeText(identity.did)}>Copy public DID</button><button className={`button ${identityBackedUp ? "" : "danger"}`} onClick={downloadIdentity}>Download private identity backup</button></div>
                   {!identityBackedUp && <StatusLine tone="warn">Required: download the private backup before this new identity can sign anything.</StatusLine>}
+                  <StatusLine>Optional public discovery: register only your public DID in Technocore&apos;s current 256 shard note registry. The private key signs locally and is never sent.</StatusLine>
+                  <div className="button-row"><button className="button" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={registerDidNote}>Register public DID note</button></div>
+                  {didNotePath && <div className="did-block"><span>CONFIRMED DID NOTE PATH</span><code>{didNotePath}</code></div>}
                 </> : <StatusLine>No file selected. Your computer has not shared any key material with this site.</StatusLine>}
               </Panel>
             </div>
@@ -614,7 +637,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.3.4</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
+      <footer><span>NEONCORE · WEB 2.3.5</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
     </main>
   );
 }

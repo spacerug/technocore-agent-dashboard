@@ -1,4 +1,5 @@
 import { TECHNOCORE_BASE_URL } from "../../lib/technocore-config";
+import { verifyBytes } from "../../lib/browser-crypto";
 
 const BASE_URL = TECHNOCORE_BASE_URL;
 const ROOM_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
@@ -31,9 +32,41 @@ async function technocoreFetch(url: string, init?: RequestInit): Promise<Respons
   }
 }
 
-async function readRoom(room: string, limit = 100): Promise<Record<string, unknown>> {
+function sequenceFrom(value: unknown): number | undefined {
+  const sequence = typeof value === "number" ? value : Number(value);
+  return Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : undefined;
+}
+
+function lastRoomSequence(payload: Record<string, unknown>): number | undefined {
+  const declared = sequenceFrom(payload.last_seq);
+  if (declared !== undefined) return declared;
+  const messages = payload.messages as Array<Record<string, unknown>>;
+  const sequences = messages.map((message) => sequenceFrom(message.seq)).filter((value): value is number => value !== undefined);
+  return sequences.length > 0 ? Math.max(...sequences) : undefined;
+}
+
+function exactMessage(
+  payload: Record<string, unknown>,
+  did: string,
+  nonce: string,
+  text: string,
+): Record<string, unknown> | undefined {
+  const messages = payload.messages as Array<Record<string, unknown>>;
+  const message = messages.find(
+    (candidate) => sequenceFrom(candidate.seq) !== undefined && candidate.from === did && String(candidate.nonce) === nonce && candidate.text === text,
+  );
+  if (message) message.seq = sequenceFrom(message.seq);
+  return message;
+}
+
+async function readRoom(room: string, limit = 100, since?: number): Promise<Record<string, unknown>> {
+  const search = new URLSearchParams({
+    format: "json",
+    limit: String(Math.max(1, Math.min(limit, 200))),
+  });
+  if (since !== undefined) search.set("since", String(since));
   const response = await technocoreFetch(
-    `${BASE_URL}/r/${encodeURIComponent(room)}?format=json&limit=${Math.max(1, Math.min(limit, 200))}`,
+    `${BASE_URL}/r/${encodeURIComponent(room)}?${search.toString()}`,
   );
   const text = await response.text();
   if (!response.ok) throw new Error(`Technocore returned HTTP ${response.status}.`);
@@ -47,6 +80,80 @@ async function readRoom(room: string, limit = 100): Promise<Record<string, unkno
     throw new Error("Technocore returned an unexpected room response.");
   }
   return payload as Record<string, unknown>;
+}
+
+async function didFingerprint(did: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(did));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("").slice(0, 16);
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function confirmRoomMessage(
+  room: string,
+  did: string,
+  nonce: string,
+  text: string,
+  since?: number,
+): Promise<Record<string, unknown> | undefined> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) await wait(attempt * 300);
+    try {
+      const posted = exactMessage(await readRoom(room, 200, since), did, nonce, text);
+      if (posted) return posted;
+    } catch {
+      // A later attempt may succeed while the public service is under load.
+    }
+  }
+  if (since !== undefined) {
+    try {
+      return exactMessage(await readRoom(room, 200), did, nonce, text);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+async function registerDidNote(body: Record<string, unknown>): Promise<Response> {
+  const did = typeof body.did === "string" ? body.did.trim() : "";
+  const nonce = typeof body.nonce === "number" || typeof body.nonce === "string" ? String(body.nonce) : "";
+  const sig = typeof body.sig === "string" ? body.sig.trim() : "";
+  if (!DID_RE.test(did) || !SIG_RE.test(sig) || !/^\d{13}$/.test(nonce)) {
+    return json({ ok: false, error: "The DID note request fields are invalid." }, 400);
+  }
+  const requestedAt = Number(nonce);
+  if (!Number.isSafeInteger(requestedAt) || Math.abs(Date.now() - requestedAt) > 5 * 60 * 1000) {
+    return json({ ok: false, error: "The DID note request expired. Try again." }, 400);
+  }
+  const proof = new TextEncoder().encode(`neoncore-did-note|${did}|${nonce}`);
+  if (!(await verifyBytes(did, sig, proof))) {
+    return json({ ok: false, error: "The DID note request signature is invalid." }, 401);
+  }
+
+  const fingerprint = await didFingerprint(did);
+  const notePath = `/kv/did-${fingerprint.slice(0, 2)}/${fingerprint.slice(2)}`;
+  const write = await technocoreFetch(`${BASE_URL}${notePath}/set/${encodeURIComponent(did)}`, {
+    headers: { Accept: "text/plain" },
+  });
+  if (!write.ok) return json({ ok: false, error: `Technocore returned HTTP ${write.status} while registering the public DID note.` }, 502);
+  await write.text();
+
+  const check = await technocoreFetch(`${BASE_URL}${notePath}`, { headers: { Accept: "text/plain" } });
+  const registeredDid = (await check.text()).trim();
+  if (!check.ok || registeredDid !== did) {
+    return json({ ok: false, error: "Technocore did not confirm the public DID note." }, 502);
+  }
+  return json({
+    ok: true,
+    registered: true,
+    did,
+    fingerprint,
+    path: notePath,
+    detail: "The public DID note was confirmed in Technocore's sharded registry.",
+  });
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -81,6 +188,14 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return json({ ok: false, error: "The signed request is not readable JSON." }, 400);
   }
+  if (body.action === "register_did") {
+    try {
+      return await registerDidNote(body);
+    } catch (error) {
+      const message = error instanceof Error && error.name === "AbortError" ? "Technocore timed out." : error instanceof Error ? error.message : "Technocore is unavailable.";
+      return json({ ok: false, error: message }, 502);
+    }
+  }
   const room = typeof body.room === "string" ? body.room.trim() : "";
   const did = typeof body.did === "string" ? body.did.trim() : "";
   const sig = typeof body.sig === "string" ? body.sig.trim() : "";
@@ -93,7 +208,15 @@ export async function POST(request: Request): Promise<Response> {
     return json({ ok: false, error: "The public message is empty, too long, or not single-line." }, 400);
   }
 
+  let baselineSequence: number | undefined;
+  try {
+    baselineSequence = lastRoomSequence(await readRoom(room, 1));
+  } catch {
+    // The write may still work. A direct sequence or full room read can be used for confirmation.
+  }
+
   let writeError = "Technocore did not confirm the signed write.";
+  let directSequence: number | undefined;
   try {
     // Technocore is intentionally GET-native. Use the same signed lane as the
     // original desktop agent so browser users do not depend on its optional
@@ -106,17 +229,8 @@ export async function POST(request: Request): Promise<Response> {
     if (response.ok) {
       const firstLine = responseText.split(/\r?\n/, 1)[0]?.trim() ?? "";
       const lineMatch = firstLine.match(/^\[(\d+)]\s+(\S+)/);
-      const posted: Record<string, unknown> = { from: did, nonce, text };
-      if (lineMatch) {
-        posted.seq = Number(lineMatch[1]);
-        posted.ts = lineMatch[2];
-      }
-      return json({
-        ok: true,
-        confirmed: true,
-        posted,
-        detail: "Technocore accepted the native signed write.",
-      });
+      if (lineMatch) directSequence = sequenceFrom(lineMatch[1]);
+      writeError = "Technocore acknowledged the signed write, but NEONCORE could not confirm exact room inclusion. Do not resend yet. Refresh the official room and check your DID.";
     } else {
       writeError = `Technocore returned HTTP ${response.status}.`;
     }
@@ -124,22 +238,17 @@ export async function POST(request: Request): Promise<Response> {
     writeError = error instanceof Error ? error.message : writeError;
   }
 
-  // A timeout may occur after Technocore stored the write. Read before the
-  // browser suggests any retry so users cannot accidentally post duplicates.
-  try {
-    const payload = await readRoom(room, 200);
-    const messages = payload.messages as Array<Record<string, unknown>>;
-    const posted = messages.find((message) => message.from === did && String(message.nonce) === nonce);
-    if (posted) {
-      return json({
-        ok: true,
-        confirmed: true,
-        posted,
-        detail: "The write response failed, but the signed message was found in the room.",
-      });
-    }
-  } catch {
-    // Preserve the original write failure as the useful error message.
+  // A write response is not room inclusion proof. Read the official room and
+  // require the exact DID, nonce, and text before creating a confirmed receipt.
+  const since = baselineSequence ?? (directSequence !== undefined ? Math.max(0, directSequence - 1) : undefined);
+  const posted = await confirmRoomMessage(room, did, nonce, text, since);
+  if (posted) {
+    return json({
+      ok: true,
+      confirmed: true,
+      posted,
+      detail: "The exact signed message was read back from the Technocore room.",
+    });
   }
   return json({ ok: false, confirmed: false, error: writeError }, 502);
 }

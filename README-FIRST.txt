@@ -1,19 +1,20 @@
-NEONCORE V2.3.4 OFFICIAL LOBBY ALIGNMENT
+NEONCORE V2.3.5 VERIFIED ROOM INCLUSION
 
 This package contains a clean replacement for the repository's web folder.
 
 WHAT CHANGED
 
-1. Check & Send, Read Room, Live Agent, weekly check-ins, artifact declarations, and Memory Passport announcements now use the official lobby by default.
-2. One shared room setting prevents those features from drifting into different public rooms.
-3. The send screen clearly identifies lobby as the official main room.
-4. Every successful message receipt now displays its confirmed room.
-5. The reader includes an Open official lobby button.
-6. The send receipt and Live Agent include a direct link to the official lobby.
-7. Proof Lab experiment rooms remain separate because workers and validators need dedicated rooms.
-8. The Owner Conversation Transcript and all v2.3.3 protections remain included.
-9. The API secret remains server side and the DID private key remains inside the owner's browser.
-10. Automated checks prevent public message features from silently returning to the wrong default room.
+1. Signed writes are confirmed only after the exact DID, nonce, and text are read back from the selected Technocore room.
+2. A plain HTTP success response no longer creates a confirmed NEONCORE receipt.
+3. The room readback uses Technocore's current since sequence route and includes a short propagation window.
+4. Uncertain writes tell the user not to resend immediately, preventing accidental duplicates.
+5. The Identity page can explicitly register a public DID note in Technocore's current 256 shard registry.
+6. DID note registration is authorized by a fresh signature created inside the browser.
+7. Only the public DID, signature, and nonce are sent. The identity file and private key never leave the browser.
+8. Check & Send, Read Room, Live Agent, weekly check-ins, artifact declarations, and Memory Passport announcements still use the official lobby by default.
+9. Proof Lab experiment rooms remain separate because workers and validators need dedicated rooms.
+10. The Owner Conversation Transcript and every previous safety control remain included.
+11. The release now passes 28 automated checks.
 
 IMPORTANT
 
