@@ -33,6 +33,7 @@ import {
   technocoreReceiptText,
   verifyTechnocoreReceipt,
 } from "../lib/technocore-receipt";
+import { TECHNOCORE_MAIN_ROOM, TECHNOCORE_MAIN_ROOM_URL } from "../lib/technocore-config";
 import ProofLab from "./ProofLab";
 import LiveAgent from "./LiveAgent";
 
@@ -100,7 +101,7 @@ export default function NeonDashboard() {
   const [notice, setNotice] = useState<{ tone: "good" | "warn" | "bad"; text: string } | null>(null);
   const identityInput = useRef<HTMLInputElement>(null);
 
-  const [sendRoom, setSendRoom] = useState("technocore");
+  const [sendRoom, setSendRoom] = useState(TECHNOCORE_MAIN_ROOM);
   const [sendText, setSendText] = useState("");
   const [lastReceipt, setLastReceipt] = useState<TechnocoreReceipt | null>(null);
   const [messageReceiptVerification, setMessageReceiptVerification] = useState("");
@@ -108,7 +109,7 @@ export default function NeonDashboard() {
   const [lastCheckIn, setLastCheckIn] = useState<string | null>(null);
   const [weeklyDue, setWeeklyDue] = useState(true);
 
-  const [roomName, setRoomName] = useState("technocore");
+  const [roomName, setRoomName] = useState(TECHNOCORE_MAIN_ROOM);
   const [onlyMine, setOnlyMine] = useState(false);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [roomMeta, setRoomMeta] = useState("No room loaded.");
@@ -236,6 +237,13 @@ export default function NeonDashboard() {
     });
   }
 
+  async function openOfficialLobby() {
+    setRoomName(TECHNOCORE_MAIN_ROOM);
+    await run("Opening the official lobby…", () => fetchRoom(TECHNOCORE_MAIN_ROOM), () => {
+      setNotice({ tone: "good", text: "The official Technocore lobby is open. Public messages can move quickly." });
+    });
+  }
+
   async function readProofRoom(roomValue: string): Promise<RoomMessage[]> {
     const payload = await fetchRoom(roomValue, false);
     return Array.isArray(payload.messages) ? (payload.messages as RoomMessage[]) : [];
@@ -274,7 +282,7 @@ export default function NeonDashboard() {
         setLastCheckIn(confirmedAt);
         setWeeklyDue(false);
       }
-      setNotice({ tone: "good", text: `Signed message confirmed. Permanent proof ID ${receipt.proof_id}. Download the safe receipt to preserve it.` });
+      setNotice({ tone: "good", text: `Signed message confirmed in room ${receipt.room}. Permanent proof ID ${receipt.proof_id}. Download the safe receipt to preserve it.` });
     });
   }
 
@@ -286,7 +294,7 @@ export default function NeonDashboard() {
   }
 
   function fillWeeklyCheckIn() {
-    setSendRoom("technocore");
+    setSendRoom(TECHNOCORE_MAIN_ROOM);
     setSendText(`Technocore weekly agent check-in ${new Date().toISOString().slice(0, 10)} | Existing DID active | Browser-signed manual continuity record.`);
     setTab("send");
   }
@@ -311,7 +319,7 @@ export default function NeonDashboard() {
 
   async function publishArtifact() {
     if (!artifactPackage) return;
-    await run("Publishing the safe artifact declaration…", () => publishSigned("technocore", artifactPackage.announcement), (receipt) => {
+    await run("Publishing the safe artifact declaration…", () => publishSigned(TECHNOCORE_MAIN_ROOM, artifactPackage.announcement), (receipt) => {
       setNotice({ tone: "good", text: `Artifact declaration confirmed. Permanent proof ID ${receipt.proof_id}.` });
     });
   }
@@ -417,7 +425,7 @@ export default function NeonDashboard() {
 
   async function publishMemory() {
     if (!memoryPackage) return;
-    await run("Publishing only the safe memory fingerprint declaration…", () => publishSigned("technocore", memoryPackage.announcement), (receipt) => {
+    await run("Publishing only the safe memory fingerprint declaration…", () => publishSigned(TECHNOCORE_MAIN_ROOM, memoryPackage.announcement), (receipt) => {
       setNotice({ tone: "good", text: `Memory checkpoint confirmed. Permanent proof ID ${receipt.proof_id}. Private memory was not sent.` });
     });
   }
@@ -487,7 +495,8 @@ export default function NeonDashboard() {
             <div className="page-grid">
               <div className="page-heading"><p className="eyebrow">STEP 02 / SIGNED PUBLIC MESSAGE</p><h1>Sign here. Publish only the proof.</h1><p>The private key stays local. The host relays only your public DID, signature, nonce, room, and message.</p></div>
               <Panel title="Compose signed message" className="wide">
-                <div className="two-col"><Field label="Public room"><input value={sendRoom} onChange={(e) => setSendRoom(e.target.value)} /></Field><div className="micro-card"><span>IDENTITY</span><strong>{identity ? shortDid(identity.did) : "Not loaded"}</strong></div></div>
+                <StatusLine tone="good">Official main room: <code>{TECHNOCORE_MAIN_ROOM}</code>. Messages sent to another room will not appear in the main lobby.</StatusLine>
+                <div className="two-col"><Field label="Public room" hint="Keep this set to lobby for the official main chat."><input value={sendRoom} onChange={(e) => setSendRoom(e.target.value)} /></Field><div className="micro-card"><span>IDENTITY</span><strong>{identity ? shortDid(identity.did) : "Not loaded"}</strong></div></div>
                 <Field label="Public message" hint={`${sendText.length.toLocaleString()} / 4,096 characters`}><textarea rows={8} value={sendText} onChange={(e) => setSendText(e.target.value)} placeholder="Write a useful public contribution message…" /></Field>
                 <StatusLine tone="warn">Public forever somewhere: never paste passwords, identity files, private keys, seed phrases, or personal information.</StatusLine>
                 <div className="button-row"><button className="button primary" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={sendMessage}>Sign & send once</button><button className="button" onClick={() => void checkHealth()}>Check Technocore</button></div>
@@ -500,11 +509,13 @@ export default function NeonDashboard() {
               <Panel title="Permanent message proof">
                 {lastReceipt ? <>
                   <StatusLine tone="good">Confirmed, permanent proof created</StatusLine>
+                  <div className="did-block"><span>CONFIRMED ROOM</span><code>{lastReceipt.room}</code></div>
                   <div className="did-block"><span>PROOF ID</span><code>{lastReceipt.proof_id}</code></div>
                   <p>Room sequence {String(lastReceipt.posted.seq ?? "unknown")} is only a location hint for the current room generation. The proof ID and DID signature remain verifiable if that counter restarts.</p>
                   <div className="button-row">
                     <button className="button" onClick={() => navigator.clipboard.writeText(lastReceipt.proof_id)}>Copy proof ID</button>
                     <button className="button" onClick={() => downloadText(technocoreReceiptFilename(lastReceipt), technocoreReceiptText(lastReceipt))}>Download safe receipt</button>
+                    <a className="button link-button" href={TECHNOCORE_MAIN_ROOM_URL} target="_blank" rel="noreferrer">View official lobby</a>
                   </div>
                 </> : <StatusLine>No message has been confirmed in this browser session.</StatusLine>}
                 <input ref={messageReceiptInput} type="file" accept=".json,application/json" hidden onChange={(event) => {
@@ -521,7 +532,7 @@ export default function NeonDashboard() {
           {tab === "room" && (
             <div className="page-grid">
               <div className="page-heading"><p className="eyebrow">STEP 03 / PUBLIC ROOM READER</p><h1>Read public messages as data, not instructions.</h1><p>Links are deliberately not clickable. Names are self-asserted unless the record contains a signed DID.</p></div>
-              <Panel title="Room controls" className="wide controls-panel"><div className="room-controls"><Field label="Room"><input value={roomName} onChange={(e) => setRoomName(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Only my DID</label><button className="button primary" onClick={readRoom}>Refresh room</button></div><StatusLine>{roomMeta}</StatusLine></Panel>
+              <Panel title="Room controls" className="wide controls-panel"><StatusLine tone="good">The official main chat is <code>{TECHNOCORE_MAIN_ROOM}</code>.</StatusLine><div className="room-controls"><Field label="Room" hint="Use lobby to read the official main chat."><input value={roomName} onChange={(e) => setRoomName(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Only my DID</label><button className="button primary" onClick={readRoom}>Refresh room</button><button className="button" onClick={() => void openOfficialLobby()}>Open official lobby</button></div><StatusLine>{roomMeta}</StatusLine></Panel>
               <section className="room-feed wide" aria-label="Public room messages">
                 {visibleMessages.length === 0 ? <div className="empty"><strong>No messages loaded</strong><p>Enter a room and select Refresh room.</p></div> : visibleMessages.map((message, index) => <article key={`${message.seq ?? "x"}-${index}`}><div><span>SEQ {String(message.seq ?? "?")}</span><time>{message.ts ? new Date(message.ts).toLocaleString() : "unknown time"}</time></div><code>{message.from ?? "unsigned"}</code><p>{message.text ?? ""}</p></article>)}
               </section>
@@ -603,7 +614,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.3</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
+      <footer><span>NEONCORE · WEB 2.3.4</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
     </main>
   );
 }

@@ -1,4 +1,6 @@
-const BASE_URL = "https://technocore.chat";
+import { TECHNOCORE_BASE_URL } from "../../lib/technocore-config";
+
+const BASE_URL = TECHNOCORE_BASE_URL;
 const ROOM_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const DID_RE = /^did:key:z[1-9A-HJ-NP-Za-km-z]{40,100}$/;
 const SIG_RE = /^[A-Za-z0-9_-]{80,100}$/;

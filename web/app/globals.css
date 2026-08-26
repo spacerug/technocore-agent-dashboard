@@ -148,6 +148,20 @@ button { color: inherit; }
 .agent-status .offline { color: var(--muted); }
 .agent-log { display: grid; gap: 7px; }
 .agent-log code { display: block; padding: 9px 11px; border: 1px solid var(--line); background: #060a07; overflow-wrap: anywhere; }
+.agent-transcript-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
+.agent-transcript-heading h2 { margin-bottom: 0; }
+.agent-conversations { display: grid; gap: 16px; }
+.agent-conversations article { border: 1px solid #294435; background: #060a07; }
+.agent-conversations header, .agent-conversations footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 18px; padding: 11px 14px; color: var(--muted); font: 9px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.agent-conversations header { border-bottom: 1px solid #1b3023; }
+.agent-conversations footer { justify-content: flex-start; border-top: 1px solid #1b3023; }
+.agent-conversations header code, .agent-conversations footer code { overflow-wrap: anywhere; }
+.agent-message { padding: 15px 16px; }
+.agent-message + .agent-message { border-top: 1px solid #1b3023; }
+.agent-message span, .agent-draft-context span { display: block; margin-bottom: 8px; color: var(--green); font: 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
+.agent-message.response { background: #09120c; }
+.agent-message p, .agent-draft-context p { margin: 0; color: #d7e3da; font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-draft-context { margin-bottom: 14px; padding: 15px 16px; border: 1px solid #294435; background: #060a07; }
 
 .two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .field { display: grid; gap: 7px; margin: 13px 0; }
@@ -309,6 +323,7 @@ footer { display: flex; justify-content: space-between; gap: 20px; min-height: 3
   .page-grid, .two-col, .limits-grid, .proof-number-grid, .proof-definition, .proof-metrics, .setup-path { grid-template-columns: 1fr; }
   .setup-arrow { height: 14px; transform: rotate(90deg); }
   .panel.wide, .room-feed.wide { grid-column: auto; }
+  .agent-transcript-heading { display: grid; }
   .page-heading { grid-column: auto; }
   .room-controls { grid-template-columns: 1fr; align-items: stretch; }
   .room-controls .button { width: 100%; }

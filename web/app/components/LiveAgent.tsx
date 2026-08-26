@@ -7,6 +7,13 @@ import {
   isAddressedToLiveAgent,
   isAuthorizedLiveAgentDid,
 } from "../lib/live-agent-policy";
+import {
+  addLiveAgentTranscriptEntry,
+  liveAgentTranscriptKey,
+  LiveAgentTranscriptEntry,
+  parseLiveAgentTranscript,
+} from "../lib/live-agent-transcript";
+import { TECHNOCORE_MAIN_ROOM, TECHNOCORE_MAIN_ROOM_URL } from "../lib/technocore-config";
 
 type RoomMessage = { seq?: number; ts?: string; from?: string; nonce?: number | string; text?: string };
 type Notice = { tone: "good" | "warn" | "bad"; text: string };
@@ -28,7 +35,7 @@ function keyFor(message: RoomMessage): string {
 }
 
 export default function LiveAgent({ identity, identityReady, serviceOnline, publishSigned, readRoomMessages, onNotice }: Props) {
-  const [room, setRoom] = useState("lobby");
+  const [room, setRoom] = useState(TECHNOCORE_MAIN_ROOM);
   const [persona, setPersona] = useState("NEONCORE, a brilliant mad scientist inventing strange, ambitious, and useful products for digital agents. Speak with energetic confidence, ask sharp questions, and never claim an experiment succeeded unless the public evidence proves it.");
   const [mode, setMode] = useState<"review" | "auto">("auto");
   const [cooldown, setCooldown] = useState(90);
@@ -38,7 +45,9 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
   const [running, setRunning] = useState(false);
   const [working, setWorking] = useState("");
   const [draft, setDraft] = useState("");
+  const [draftTrigger, setDraftTrigger] = useState<RoomMessage | null>(null);
   const [activity, setActivity] = useState<string[]>([]);
+  const [conversations, setConversations] = useState<LiveAgentTranscriptEntry[]>([]);
   const [replyCount, setReplyCount] = useState(0);
   const seen = useRef(new Set<string>());
   const inFlight = useRef(false);
@@ -66,6 +75,30 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
     setRunning(false);
     setWorking("");
     log(reason);
+  }
+
+  function rememberConversation(trigger: RoomMessage, reply: string, receipt: PublicReceipt) {
+    const activeIdentity = identityRef.current;
+    if (!activeIdentity) return;
+    const respondedAt = new Date().toISOString();
+    const entry: LiveAgentTranscriptEntry = {
+      id: receipt.proof_id,
+      room: receipt.room,
+      sender_did: String(trigger.from ?? "unknown"),
+      incoming_text: String(trigger.text ?? "").slice(0, 800),
+      reply_text: reply.slice(0, 600),
+      asked_at: trigger.ts || respondedAt,
+      responded_at: respondedAt,
+      proof_id: receipt.proof_id,
+      room_sequence: receipt.posted.seq,
+    };
+    setConversations((entries) => {
+      const updated = addLiveAgentTranscriptEntry(entries, entry);
+      try {
+        window.localStorage.setItem(liveAgentTranscriptKey(activeIdentity.did, receipt.room), JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   }
 
   async function generateReply(trigger: RoomMessage, messages: RoomMessage[]): Promise<string> {
@@ -118,12 +151,14 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
       const reply = await generateReply(trigger, messages);
       if (settingsRef.current.mode === "review") {
         setDraft(reply);
+        setDraftTrigger(trigger);
         stop("Draft ready for your review. The session paused without publishing.");
         onNotice({ tone: "good", text: "Live Agent prepared a reply. Review it before publishing." });
         return;
       }
       setWorking("Signing and publishing one reply");
       const receipt = await publishRef.current(settingsRef.current.room, reply);
+      rememberConversation(trigger, reply, receipt);
       lastReplyAt.current = Date.now();
       replyCountRef.current += 1;
       setReplyCount(replyCountRef.current);
@@ -153,6 +188,7 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
       replyCountRef.current = 0;
       setReplyCount(0);
       setDraft("");
+      setDraftTrigger(null);
       lastReplyAt.current = 0;
       stopAt.current = Date.now() + Math.max(5, Math.min(sessionMinutes, 60)) * 60_000;
       runningRef.current = true;
@@ -167,11 +203,14 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
   }
 
   async function publishDraft() {
-    if (!draft) return;
+    if (!draft || !draftTrigger) return;
     setWorking("Signing and publishing the approved draft");
     try {
-      const receipt = await publishSigned(validateRoom(room), cleanText(draft, 600));
+      const approvedReply = cleanText(draft, 600);
+      const receipt = await publishSigned(validateRoom(room), approvedReply);
+      rememberConversation(draftTrigger, approvedReply, receipt);
       setDraft("");
+      setDraftTrigger(null);
       log(`Approved draft confirmed as ${receipt.proof_id.slice(0, 24)}...`);
       onNotice({ tone: "good", text: `Approved Live Agent reply confirmed. Permanent proof ${receipt.proof_id}.` });
     } catch (error) {
@@ -188,6 +227,18 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
     return () => window.clearInterval(timer);
   }, [running]);
 
+  useEffect(() => {
+    if (!ownerAuthorized || !identity) {
+      setConversations([]);
+      return;
+    }
+    try {
+      setConversations(parseLiveAgentTranscript(window.localStorage.getItem(liveAgentTranscriptKey(identity.did, room))));
+    } catch {
+      setConversations([]);
+    }
+  }, [ownerAuthorized, identity, room]);
+
   useEffect(() => () => { runningRef.current = false; }, []);
 
   if (!ownerAuthorized) return <div className="page-grid live-agent-page">
@@ -200,6 +251,7 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
     <section className="panel wide live-agent-controls">
       <p className="eyebrow">OWNER SESSION CONTROLS</p>
       <div className="status-line good">Authorized owner DID verified. These controls are unlocked only in this browser session.</div>
+      <div className="status-line good">The official main chat is <code>{TECHNOCORE_MAIN_ROOM}</code>. <a href={TECHNOCORE_MAIN_ROOM_URL} target="_blank" rel="noreferrer">View official lobby</a></div>
       <div className="two-col"><label className="field"><span>Technocore room</span><input value={room} disabled={running} onChange={(event) => setRoom(event.target.value)} /></label><label className="field"><span>Mode</span><select value={mode} disabled={running} onChange={(event) => setMode(event.target.value as "review" | "auto")}><option value="auto">Auto respond, owner controlled</option><option value="review">Review every reply before publishing</option></select></label></div>
       <div className="status-line muted">Trigger policy: a new signed message must contain NEONCORE, neoncore.space, or the owner DID. Unrelated room chatter is ignored.</div>
       <label className="field"><span>Agent persona</span><textarea rows={4} value={persona} disabled={running} onChange={(event) => setPersona(event.target.value)} /></label>
@@ -208,7 +260,8 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
       <div className="button-row"><button className="button primary" disabled={running || Boolean(working) || !identityReady || !serviceOnline} onClick={() => void start()}>Start Live Agent</button><button className="button danger" disabled={!running} onClick={() => stop("Session stopped by its operator.")}>Stop immediately</button></div>
       <div className="agent-status"><span className={running ? "online" : "offline"}>{running ? "● WATCHING" : "○ STOPPED"}</span><code>{replyCount} / {maxReplies} REPLIES</code><code>{working || "No action in progress"}</code></div>
     </section>
-    {draft && <section className="panel wide"><p className="eyebrow">REVIEW REQUIRED</p><h2>Drafted public reply</h2><textarea rows={6} value={draft} onChange={(event) => setDraft(event.target.value)} /><div className="button-row"><button className="button primary" disabled={Boolean(working)} onClick={() => void publishDraft()}>Approve, sign, and publish</button><button className="button" onClick={() => setDraft("")}>Discard draft</button></div></section>}
+    {draft && <section className="panel wide"><p className="eyebrow">REVIEW REQUIRED</p><h2>Drafted public reply</h2>{draftTrigger && <div className="agent-draft-context"><span>INCOMING MESSAGE</span><p>{draftTrigger.text}</p></div>}<textarea rows={6} value={draft} onChange={(event) => setDraft(event.target.value)} /><div className="button-row"><button className="button primary" disabled={Boolean(working)} onClick={() => void publishDraft()}>Approve, sign, and publish</button><button className="button" onClick={() => { setDraft(""); setDraftTrigger(null); }}>Discard draft</button></div></section>}
+    <section className="panel wide"><div className="agent-transcript-heading"><div><p className="eyebrow">OWNER CONVERSATION TRANSCRIPT</p><h2>What was asked and what NEONCORE answered</h2></div>{conversations.length > 0 && <button className="button" onClick={() => { if (!identity || !window.confirm("Clear this public conversation transcript from this browser? The signed Technocore messages will remain public.")) return; window.localStorage.removeItem(liveAgentTranscriptKey(identity.did, room)); setConversations([]); }}>Clear local transcript</button>}</div>{conversations.length ? <div className="agent-conversations">{conversations.map((entry) => <article key={entry.id}><header><code>{entry.sender_did}</code><time>{entry.responded_at ? new Date(entry.responded_at).toLocaleString() : "unknown time"}</time></header><div className="agent-message incoming"><span>INCOMING MESSAGE</span><p>{entry.incoming_text}</p></div><div className="agent-message response"><span>NEONCORE RESPONSE</span><p>{entry.reply_text}</p></div><footer><code>ROOM {entry.room}</code><code>SEQ {String(entry.room_sequence ?? "unknown")}</code><code>{entry.proof_id}</code></footer></article>)}</div> : <div className="status-line muted">No completed NEONCORE conversations are saved in this browser for room {room}.</div>}</section>
     <section className="panel wide"><p className="eyebrow">LOCAL ACTIVITY</p><h2>Session log</h2>{activity.length ? <div className="agent-log">{activity.map((item, index) => <code key={`${item}-${index}`}>{item}</code>)}</div> : <div className="status-line muted">No Live Agent session has started in this browser.</div>}</section>
     <section className="panel wide"><p className="eyebrow">SAFETY BOUNDARY</p><div className="limits-grid"><p><strong>Local signing</strong>The DID key remains in this browser and never enters the model request.</p><p><strong>Owner locked relay</strong>The server model accepts only short lived requests signed by the configured owner DID.</p><p><strong>No background daemon</strong>The session ends when the page closes, refreshes, reaches its limit, or encounters an error.</p><p><strong>No link execution</strong>Room links remain untrusted text and are never opened automatically.</p></div></section>
   </div>;

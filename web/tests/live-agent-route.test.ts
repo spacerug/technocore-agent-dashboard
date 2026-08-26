@@ -8,6 +8,11 @@ import {
   isAddressedToLiveAgent,
   isAuthorizedLiveAgentDid,
 } from "../app/lib/live-agent-policy";
+import {
+  addLiveAgentTranscriptEntry,
+  liveAgentTranscriptKey,
+  parseLiveAgentTranscript,
+} from "../app/lib/live-agent-transcript";
 
 function seedHex(offset: number): string {
   return Array.from({ length: 32 }, (_, index) => ((index + offset) % 256).toString(16).padStart(2, "0")).join("");
@@ -110,6 +115,41 @@ test("rejects unrelated signed room chatter before using the model relay", async
     if (previousModelKey === undefined) delete process.env.MODEL_API_KEY;
     else process.env.MODEL_API_KEY = previousModelKey;
   }
+});
+
+test("stores a bounded public transcript with the question, response, and proof", () => {
+  const entry = {
+    id: "ncmsg-proof-one",
+    room: "lobby",
+    sender_did: "did:key:z6MkuVbNjTiAp7uC7RywMDkBAvXsZ57FXK8tzXvyRrv4BYpM",
+    incoming_text: "NEONCORE, what are you building?",
+    reply_text: "A machine for verifiable agent experiments. | neoncore.space",
+    asked_at: "2026-08-25T17:30:00.000Z",
+    responded_at: "2026-08-25T17:30:05.000Z",
+    proof_id: "ncmsg-proof-one",
+    room_sequence: 42,
+  };
+  const stored = addLiveAgentTranscriptEntry([], entry);
+  const restored = parseLiveAgentTranscript(JSON.stringify(stored));
+  assert.deepEqual(restored, [entry]);
+  assert.match(liveAgentTranscriptKey(DEFAULT_LIVE_AGENT_OWNER_DID, "lobby"), /:lobby$/);
+});
+
+test("rejects malformed local transcript data and deduplicates proof IDs", () => {
+  assert.deepEqual(parseLiveAgentTranscript("not json"), []);
+  assert.deepEqual(parseLiveAgentTranscript(JSON.stringify([{ incoming_text: "missing proof" }])), []);
+  const first = {
+    id: "ncmsg-same",
+    room: "lobby",
+    sender_did: DEFAULT_LIVE_AGENT_OWNER_DID,
+    incoming_text: "NEONCORE, first",
+    reply_text: "First reply",
+    asked_at: "2026-08-25T17:30:00.000Z",
+    responded_at: "2026-08-25T17:30:05.000Z",
+    proof_id: "ncmsg-same",
+  };
+  const replacement = { ...first, incoming_text: "NEONCORE, corrected" };
+  assert.deepEqual(addLiveAgentTranscriptEntry([first], replacement), [replacement]);
 });
 
 test("adds the NEONCORE website exactly once to every generated reply", () => {
