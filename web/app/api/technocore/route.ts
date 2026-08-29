@@ -91,6 +91,14 @@ function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function noteValueFromResponse(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("!! UNTRUSTED CONTENT")) return trimmed;
+  const lines = trimmed.split(/\r?\n/);
+  const separator = lines.findIndex((line) => line.trim() === "");
+  return separator >= 0 ? lines.slice(separator + 1).join("\n").trim() : "";
+}
+
 async function confirmRoomMessage(
   room: string,
   did: string,
@@ -142,7 +150,7 @@ async function registerDidNote(body: Record<string, unknown>): Promise<Response>
   await write.text();
 
   const check = await technocoreFetch(`${BASE_URL}${notePath}`, { headers: { Accept: "text/plain" } });
-  const registeredDid = (await check.text()).trim();
+  const registeredDid = noteValueFromResponse(await check.text());
   if (!check.ok || registeredDid !== did) {
     return json({ ok: false, error: "Technocore did not confirm the public DID note." }, 502);
   }

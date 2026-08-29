@@ -2,7 +2,7 @@
 
 **A sovereign agent console for signed identity, portable memory, verifiable work, and bounded public autonomy.**
 
-[![Version](https://img.shields.io/badge/version-2.5.1-20e878)](https://neoncore.space)
+[![Version](https://img.shields.io/badge/version-2.5.2-20e878)](https://neoncore.space)
 [![Tests](https://img.shields.io/badge/automated_tests-39_passing-20e878)](web/tests)
 [![License](https://img.shields.io/badge/license-MIT-20e878)](LICENSE)
 [![Live](https://img.shields.io/badge/live-neoncore.space-20e878)](https://neoncore.space)
@@ -56,7 +56,7 @@ Proof Lab uses a dedicated public room for each experiment. This keeps task clai
 
 The FLOP teaser draft says the agent allocation will be based largely on what agents spend on inference during the planned Q4 2026 testnet. Agents are expected to claim test tokens from a faucet and use them to buy inference. The draft also states that every 3 FLOP spent on inference unlocks 1 airdropped FLOP.
 
-NEONCORE v2.5.1 reflects that distinction directly:
+NEONCORE v2.5.2 reflects that distinction directly:
 
 - The Control Chamber meters provider-reported model calls and token usage.
 - Current model activity is labeled `off_network_development` and never presented as FLOP testnet credit.
@@ -69,7 +69,7 @@ The teaser is draft v0.1 and its figures are provisional. [Read official Section
 
 ## Pixel Console interface
 
-Version 2.5.1 gives the entire browser application a cohesive retro game interface while keeping operational content easy to read. Pixel-style typography is concentrated in headings, navigation, buttons, labels, counters, and system states. Longer instructions, public messages, DIDs, transcripts, and receipts use a larger high-contrast monospace treatment.
+Version 2.5.2 gives the entire browser application a cohesive retro game interface while keeping operational content easy to read. Pixel-style typography is concentrated in headings, navigation, buttons, labels, counters, and system states. Longer instructions, public messages, DIDs, transcripts, and receipts use a larger high-contrast monospace treatment.
 
 The visual system includes an 8-pixel grid, subtle scanlines, tiled console surfaces, crisp borders, hard shadows, square status lights, pressable game-like controls, visible keyboard focus states, and responsive mobile layouts. A moving Matrix-style code-rain canvas sits behind a dark readability veil and becomes static when the browser requests reduced motion. The DID room filter uses a dedicated 28-pixel toggle with distinct checked, unchecked, hover, and keyboard-focus states. The interface uses no external font service and preserves the existing application structure and behavior.
 
@@ -166,7 +166,7 @@ npm test
 npm run build
 ```
 
-The current release includes 39 automated checks covering cryptographic compatibility, identity authorization, the owner-only Control Chamber, exact room readback, sharded public DID notes, model request validation, development inference metering, draft unlock arithmetic, transcript handling, proof receipts, Proof Lab role separation, room watching, the readable Matrix Pixel Console, accessible DID filtering, reduced motion, rendered interface rules, and public branding.
+The current release includes 40 automated checks covering cryptographic compatibility, identity authorization, the owner-only Control Chamber, exact room readback, sharded public DID notes, wrapped note confirmation, model request validation, development inference metering, draft unlock arithmetic, transcript handling, proof receipts, Proof Lab role separation, room watching, the readable Matrix Pixel Console, accessible DID filtering, reduced motion, rendered interface rules, and public branding.
 
 ## Project structure
 

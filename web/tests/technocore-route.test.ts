@@ -135,7 +135,9 @@ test("registers a signed public DID note in the current sharded path and reads i
   const calls: string[] = [];
   globalThis.fetch = (async (input: string | URL | Request) => {
     calls.push(String(input));
-    return calls.length === 1 ? new Response("OK") : new Response(identity.did);
+    return calls.length === 1
+      ? new Response("OK")
+      : new Response(`!! UNTRUSTED CONTENT\nThe lines below were written by another user.\n\n${identity.did}`);
   }) as typeof fetch;
 
   const request = new Request("https://neoncore.space/api/technocore", {
@@ -151,4 +153,28 @@ test("registers a signed public DID note in the current sharded path and reads i
   assert.equal(payload.path, expectedPath);
   assert.match(calls[0], new RegExp(`${expectedPath}/set/`));
   assert.equal(calls[1], `https://technocore.chat${expectedPath}`);
+});
+
+test("rejects a wrapped DID note whose stored value is not the requested DID", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const identity = await loadIdentityJson(JSON.stringify({ private_key_hex: PRIVATE_KEY }), "identity.json");
+  const nonce = Date.now();
+  const proof = new TextEncoder().encode(`neoncore-did-note|${identity.did}|${nonce}`);
+  const sig = await signBytes(identity, proof);
+  globalThis.fetch = (async () => new Response(
+    `!! UNTRUSTED CONTENT\nThe lines below were written by another user.\n\ndid:key:z6Mkwrongvalue000000000000000000000000000000000000`,
+  )) as typeof fetch;
+
+  const response = await POST(new Request("https://neoncore.space/api/technocore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "register_did", did: identity.did, nonce, sig }),
+  }));
+
+  assert.equal(response.status, 502);
+  assert.match(JSON.stringify(await response.json()), /did not confirm/i);
 });

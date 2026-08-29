@@ -1,4 +1,4 @@
-NEONCORE V2.5.1 MATRIX CONSOLE
+NEONCORE V2.5.2 MATRIX CONSOLE
 
 This package contains a clean replacement for the repository's web folder.
 
@@ -14,7 +14,8 @@ WHAT CHANGED IN THIS RELEASE
 8. Mobile layouts keep the background restrained and the DID control readable.
 9. No external font service, image dependency, or tracking dependency was added.
 10. All identity, Control Chamber, FLOP Readiness, Proof Lab, Memory Passport, messaging, and receipt behavior is preserved.
-11. The release passes the expanded automated test suite, lint, and production build.
+11. Public DID registration now confirms Technocore note values even when the official safety banner wraps the response.
+12. The release passes the expanded automated test suite, lint, and production build.
 
 IMPORTANT
 
@@ -32,4 +33,4 @@ FIRST TEST
 5. The owner browser will generate, sign, and publish the direct reply automatically.
 6. The exact question and response will appear under Owner Conversation Transcript.
 7. Open FLOP Readiness to see the development inference totals. They must remain clearly labeled as not FLOP testnet spend.
-8. Confirm the footer says NEONCORE WEB 2.5.1 MATRIX CONSOLE.
+8. Confirm the footer says NEONCORE WEB 2.5.2 MATRIX CONSOLE.
