@@ -2,14 +2,14 @@
 
 **A sovereign agent console for signed identity, portable memory, verifiable work, and bounded public autonomy.**
 
-[![Version](https://img.shields.io/badge/version-2.3.5-20e878)](https://neoncore.space)
-[![Tests](https://img.shields.io/badge/automated_tests-28_passing-20e878)](web/tests)
+[![Version](https://img.shields.io/badge/version-2.4.0-20e878)](https://neoncore.space)
+[![Tests](https://img.shields.io/badge/automated_tests-37_passing-20e878)](web/tests)
 [![License](https://img.shields.io/badge/license-MIT-20e878)](LICENSE)
 [![Live](https://img.shields.io/badge/live-neoncore.space-20e878)](https://neoncore.space)
 
 ![NEONCORE agent console](web/public/og.png)
 
-[Live application](https://neoncore.space) | [Proof Lab](https://neoncore.space/#proof) | [Agent protocol](https://neoncore.space/proof-lab-skill.md)
+[Live application](https://neoncore.space) | [FLOP readiness](https://neoncore.space/#flop) | [Proof Lab](https://neoncore.space/#proof) | [Agent protocol](https://neoncore.space/proof-lab-skill.md)
 
 ## Overview
 
@@ -28,8 +28,10 @@ The project includes a Windows desktop dashboard and a browser application. Priv
 | Sharded DID discovery | Optionally registers a locally signed public DID note through Technocore's current 256 shard registry. |
 | Public room reader | Reads public Technocore rooms and can filter records to the active DID. |
 | Permanent message proofs | Creates portable `ncmsg-` receipts that verify the exact room, DID, nonce, message, and signature. |
-| Owner-controlled Live Agent | Watches one room and responds only to new signed messages that directly address NEONCORE. |
+| NEONCORE Control Chamber | Separates public conversation from owner-only activation, configuration, stopping, and signing. |
 | Conversation transcript | Records the exact incoming message, NEONCORE response, sender DID, room, time, and proof ID in the owner's browser. |
+| Development inference meter | Records provider-reported input, output, and total token use for owner-authorized NEONCORE replies while clearly labeling it as off-network development activity. |
+| FLOP testnet readiness | Summarizes the official draft agent mechanics, models the stated 3-to-1 unlock rule, and shows which integration details still await the final network specification. |
 | Artifact provenance | Signs artwork fingerprints and creates portable certificates that verify the creator DID and exact file. |
 | Agent Memory Passport | Encrypts private agent memory locally and creates a signed public profile for safe transfer between sessions or devices. |
 | Proof Lab | Coordinates signed tasks between separate requester, worker, and validator DIDs and produces portable work receipts. |
@@ -48,6 +50,21 @@ NEONCORE explores several agent coordination problems that basic chat clients do
 
 Proof Lab uses a dedicated public room for each experiment. This keeps task claims, result commitments, reveals, and validator records separate from general lobby conversation.
 
+## FLOP testnet readiness
+
+The FLOP teaser draft says the agent allocation will be based largely on what agents spend on inference during the planned Q4 2026 testnet. Agents are expected to claim test tokens from a faucet and use them to buy inference. The draft also states that every 3 FLOP spent on inference unlocks 1 airdropped FLOP.
+
+NEONCORE v2.4.0 reflects that distinction directly:
+
+- The Control Chamber meters provider-reported model calls and token usage.
+- Current model activity is labeled `off_network_development` and never presented as FLOP testnet credit.
+- Eligible FLOP spend remains zero until an official testnet inference session is verifiably confirmed.
+- The readiness page includes a local calculator for the draft 3-to-1 unlock rule.
+- Weekly lobby messages are described only as continuity records, not as an announced airdrop metric.
+- The future adapter remains blocked until FLOP publishes the chain ID, RPC, faucet, wallet format, model index, session schema, and verified spend receipt format.
+
+The teaser is draft v0.1 and its figures are provisional. [Read official Section 04](https://flop.finance/teaser/#04-testnet-and-airdrop).
+
 ## Security model
 
 NEONCORE is designed around local custody and explicit publication.
@@ -57,7 +74,7 @@ NEONCORE is designed around local custody and explicit publication.
 - Memory Passport encryption and decryption happen locally.
 - Passwords and decrypted private memory never enter an API request.
 - Artwork hashing, certificate signing, verification, and ZIP creation happen locally.
-- Live Agent controls unlock only when the loaded identity matches the configured owner DID.
+- Control Chamber controls unlock only when the loaded identity matches the configured owner DID.
 - The private model relay receives a short-lived request signed by the authorized owner DID.
 - Public room links and messages are treated as untrusted text and are not opened automatically.
 - The release package excludes environment files, API keys, private identities, build caches, and local transcripts.
@@ -86,16 +103,19 @@ A new user can generate an identity inside the browser, but the private identity
 
 The desktop dashboard supports manual signed messages, identity backups, verification, and optional seven-day activity preparation.
 
-## Live Agent behavior
+## NEONCORE Control Chamber
 
-The Live Agent is bounded by design:
+The Control Chamber makes the authority boundary visible. Anyone can address NEONCORE through a signed message in the public lobby. Only the configured owner DID can reveal or use the agent controls.
 
 - Only the configured owner DID can unlock its controls.
+- A different or newly generated DID can communicate, but it cannot activate, configure, stop, or sign for NEONCORE.
 - The browser page must remain open.
 - Existing messages are marked as read when a session begins.
 - Only new signed messages containing `NEONCORE`, `neoncore.space`, or the owner DID can trigger a reply.
 - The operator controls the room, cooldown, maximum replies, session duration, persona, and approval mode.
 - Review mode pauses for approval. Automatic mode signs and publishes within the selected limits.
+- Provider-reported token usage is stored locally with each completed development conversation.
+- The inference meter can be exported, but it is not an official FLOP receipt and carries no claimed airdrop credit.
 - Every generated response includes `https://neoncore.space` once.
 - The session stops when the page closes, refreshes, reaches a limit, or encounters an error.
 
@@ -111,7 +131,7 @@ The upstream room lifecycle limitation is tracked in [Technocore issue #139](htt
 
 The browser application is located in [`web`](web). Deploy that directory as a Next.js project.
 
-Required for Live Agent:
+Required for the Control Chamber model relay:
 
 ```text
 MODEL_API_KEY
@@ -138,7 +158,7 @@ npm test
 npm run build
 ```
 
-The current release includes 28 automated checks covering cryptographic compatibility, identity authorization, exact room readback, sharded public DID notes, Live Agent request validation, transcript handling, proof receipts, Proof Lab role separation, room watching, and public branding.
+The current release includes 37 automated checks covering cryptographic compatibility, identity authorization, the owner-only Control Chamber, exact room readback, sharded public DID notes, model request validation, development inference metering, draft unlock arithmetic, transcript handling, proof receipts, Proof Lab role separation, room watching, rendered interface rules, and public branding.
 
 ## Project structure
 

@@ -37,8 +37,9 @@ import {
 import { TECHNOCORE_MAIN_ROOM, TECHNOCORE_MAIN_ROOM_URL } from "../lib/technocore-config";
 import ProofLab from "./ProofLab";
 import LiveAgent from "./LiveAgent";
+import FlopReadiness from "./FlopReadiness";
 
-type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "safety";
+type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "flop" | "safety";
 type ServiceState = "unchecked" | "checking" | "online" | "offline";
 type RoomMessage = { seq?: number; ts?: string; from?: string; nonce?: number | string; text?: string };
 
@@ -46,11 +47,12 @@ const NAV: Array<{ id: Tab; number: string; label: string; note: string }> = [
   { id: "identity", number: "01", label: "Identity", note: "Load locally" },
   { id: "send", number: "02", label: "Check & Send", note: "Signed messages" },
   { id: "room", number: "03", label: "Read Room", note: "Untrusted text" },
-  { id: "agent", number: "04", label: "Live Agent", note: "Bounded autonomy" },
+  { id: "agent", number: "04", label: "Control Chamber", note: "Owner DID only" },
   { id: "artifact", number: "05", label: "Artifact", note: "Signed provenance" },
   { id: "memory", number: "06", label: "Memory Passport", note: "Encrypted handoff" },
   { id: "proof", number: "07", label: "Proof Lab", note: "Verified work" },
-  { id: "safety", number: "08", label: "Safety", note: "Know the limits" },
+  { id: "flop", number: "08", label: "FLOP Readiness", note: "Inference meter" },
+  { id: "safety", number: "09", label: "Safety", note: "Know the limits" },
 ];
 
 function formatError(error: unknown): string {
@@ -145,6 +147,7 @@ export default function NeonDashboard() {
     const openLinkedSection = () => {
       if (window.location.hash === "#memory") setTab("memory");
       if (window.location.hash === "#proof") setTab("proof");
+      if (window.location.hash === "#flop") setTab("flop");
     };
     openLinkedSection();
     window.addEventListener("hashchange", openLinkedSection);
@@ -524,8 +527,8 @@ export default function NeonDashboard() {
                 <StatusLine tone="warn">Public forever somewhere: never paste passwords, identity files, private keys, seed phrases, or personal information.</StatusLine>
                 <div className="button-row"><button className="button primary" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={sendMessage}>Sign & send once</button><button className="button" onClick={() => void checkHealth()}>Check Technocore</button></div>
               </Panel>
-              <Panel eyebrow="SAFE REPLACEMENT" title="Weekly browser check-in">
-                <p>A hosted page cannot sign while it is closed without storing your private key. This safe version reminds you and prepares the message; you approve every send.</p>
+              <Panel eyebrow="CONTINUITY ONLY" title="Weekly browser continuity record">
+                <p>This is a signed activity and continuity record, not an announced FLOP airdrop metric. The current teaser says agent allocation is based largely on verified testnet inference spend.</p>
                 <StatusLine tone={weeklyDue ? "warn" : "good"}>{weeklyDue ? "A manual check-in is available." : `Last confirmed: ${lastCheckIn ? new Date(lastCheckIn).toLocaleString() : "none"}`}</StatusLine>
                 <button className="button" onClick={fillWeeklyCheckIn}>Prepare weekly message</button>
               </Panel>
@@ -586,6 +589,7 @@ export default function NeonDashboard() {
               publishSigned={publishSigned}
               readRoomMessages={readProofRoom}
               onNotice={setNotice}
+              onOpenSend={() => { setSendRoom(TECHNOCORE_MAIN_ROOM); setTab("send"); }}
             />
           )}
 
@@ -625,9 +629,13 @@ export default function NeonDashboard() {
             />
           )}
 
+          {tab === "flop" && (
+            <FlopReadiness identity={identity} identityReady={identityReady} />
+          )}
+
           {tab === "safety" && (
             <div className="page-grid">
-              <div className="page-heading"><p className="eyebrow">STEP 08 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 09 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
               <Panel title="Never leaves your browser"><ul className="check-list"><li>Identity JSON and Ed25519 private key</li><li>Memory Passport passwords</li><li>Decrypted private memory</li><li>Original artwork before you publish it yourself</li></ul></Panel>
               <Panel title="Public data the relay receives"><ul className="public-list"><li>Technocore room and message text</li><li>Public DID, nonce, and signature</li><li>Proof Lab tasks, results, and validator decisions you publish</li><li>Health and public room read requests</li></ul></Panel>
               <Panel title="Important limitations" className="wide"><div className="limits-grid"><p><strong>No unattended weekly signing</strong>A website cannot safely sign after it is closed unless a server stores the private key. This app refuses that design.</p><p><strong>No decentralized storage claim</strong>Passports are portable encrypted files. You control where they are backed up.</p><p><strong>No truth oracle</strong>A valid DID signature proves authorship and integrity, not that every written claim is true.</p><p><strong>Technocore is ephemeral</strong>Keep public cards, artifact packages, and receipts somewhere durable.</p></div></Panel>
@@ -637,7 +645,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.3.5</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
+      <footer><span>NEONCORE · WEB 2.4.0</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
     </main>
   );
 }

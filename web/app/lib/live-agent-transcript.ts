@@ -8,6 +8,13 @@ export type LiveAgentTranscriptEntry = {
   responded_at: string;
   proof_id: string;
   room_sequence?: number;
+  inference_usage?: {
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    scope: "off_network_development";
+  };
 };
 
 export const MAX_LIVE_AGENT_TRANSCRIPT_ENTRIES = 50;
@@ -40,6 +47,28 @@ export function parseLiveAgentTranscript(value: string | null): LiveAgentTranscr
       };
       const sequence = Number(record.room_sequence);
       if (Number.isFinite(sequence) && sequence >= 0) entry.room_sequence = sequence;
+      if (record.inference_usage && typeof record.inference_usage === "object" && !Array.isArray(record.inference_usage)) {
+        const usage = record.inference_usage as Record<string, unknown>;
+        const model = safeText(usage.model, 100);
+        const inputTokens = Number(usage.input_tokens);
+        const outputTokens = Number(usage.output_tokens);
+        const totalTokens = Number(usage.total_tokens);
+        if (
+          model
+          && usage.scope === "off_network_development"
+          && Number.isSafeInteger(inputTokens) && inputTokens >= 0
+          && Number.isSafeInteger(outputTokens) && outputTokens >= 0
+          && Number.isSafeInteger(totalTokens) && totalTokens >= inputTokens + outputTokens
+        ) {
+          entry.inference_usage = {
+            model,
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            total_tokens: totalTokens,
+            scope: "off_network_development",
+          };
+        }
+      }
       if (!entry.id || !entry.room || !entry.sender_did || !entry.incoming_text || !entry.reply_text || !entry.proof_id) return [];
       return [entry];
     }).slice(0, MAX_LIVE_AGENT_TRANSCRIPT_ENTRIES);

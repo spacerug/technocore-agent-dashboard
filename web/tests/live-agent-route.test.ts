@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { loadIdentityJson, makeProof } from "../app/lib/browser-crypto";
-import { finalizeAgentReply, POST } from "../app/api/live-agent/route";
+import { extractDevelopmentUsage, finalizeAgentReply, POST } from "../app/api/live-agent/route";
 import {
   DEFAULT_LIVE_AGENT_OWNER_DID,
   isAddressedToLiveAgent,
@@ -157,4 +157,18 @@ test("adds the NEONCORE website exactly once to every generated reply", () => {
   const deduplicated = finalizeAgentReply("Visit https://neoncore.space and neoncore.space for more.");
   assert.equal(deduplicated.match(/neoncore\.space/g)?.length, 1);
   assert.ok(deduplicated.length <= 600);
+});
+
+test("extracts bounded provider usage as off-network development activity", () => {
+  assert.deepEqual(extractDevelopmentUsage({
+    model: "development-model",
+    usage: { input_tokens: 125, output_tokens: 25, total_tokens: 150 },
+  }, "fallback-model"), {
+    model: "development-model",
+    input_tokens: 125,
+    output_tokens: 25,
+    total_tokens: 150,
+    scope: "off_network_development",
+  });
+  assert.equal(extractDevelopmentUsage({ usage: { input_tokens: -1 } }, "fallback-model").total_tokens, 0);
 });

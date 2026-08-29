@@ -30,6 +30,26 @@ export function finalizeAgentReply(value: string): string {
   return `${statement} | ${site}`;
 }
 
+export function extractDevelopmentUsage(payload: Record<string, unknown>, fallbackModel: string) {
+  const usage = payload.usage && typeof payload.usage === "object" && !Array.isArray(payload.usage)
+    ? payload.usage as Record<string, unknown>
+    : {};
+  const safeCount = (value: unknown) => {
+    const count = Number(value);
+    return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+  };
+  const inputTokens = safeCount(usage.input_tokens);
+  const outputTokens = safeCount(usage.output_tokens);
+  const statedTotal = safeCount(usage.total_tokens);
+  return {
+    model: text(payload.model, 100) || fallbackModel,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: Math.max(statedTotal, inputTokens + outputTokens),
+    scope: "off_network_development" as const,
+  };
+}
+
 export async function POST(request: Request): Promise<Response> {
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > 64_000) return json({ ok: false, error: "The agent request is too large." }, 413);
@@ -121,7 +141,7 @@ export async function POST(request: Request): Promise<Response> {
     }).map((item) => item && typeof item === "object" ? String((item as Record<string, unknown>).text ?? "") : "").join(" ");
     const reply = finalizeAgentReply(generated);
     if (!reply) throw new Error("The model returned no public reply.");
-    return json({ ok: true, reply });
+    return json({ ok: true, reply, usage: extractDevelopmentUsage(payload, modelName) });
   } catch (error) {
     const message = error instanceof Error && /quota|billing|credit/i.test(error.message)
       ? "The private model relay needs API credit."

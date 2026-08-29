@@ -23,3 +23,28 @@ test("renders the owner transcript and uses lobby for public conversation defaul
   assert.doesNotMatch(dashboard, /publishSigned\("technocore"/);
   assert.doesNotMatch(dashboard, /setSendRoom\("technocore"/);
 });
+
+test("brands agent operation as a single owner Control Chamber", () => {
+  const agent = readFileSync("app/components/LiveAgent.tsx", "utf8");
+  const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
+  assert.match(dashboard, /label: "Control Chamber", note: "Owner DID only"/);
+  assert.match(agent, /Public conversation\. Private control\./);
+  assert.match(agent, /Creating a new DID will not grant access/);
+  assert.match(agent, /OWNER DID VERIFIED/);
+  assert.match(agent, /Activate NEONCORE/);
+  assert.match(agent, /Emergency stop/);
+  assert.match(agent, /if \(!ownerAuthorized\) return/);
+});
+
+test("separates development inference from announced FLOP testnet spend", () => {
+  const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
+  const readiness = readFileSync("app/components/FlopReadiness.tsx", "utf8");
+  const agent = readFileSync("app/components/LiveAgent.tsx", "utf8");
+  assert.match(dashboard, /label: "FLOP Readiness", note: "Inference meter"/);
+  assert.match(dashboard, /not an announced FLOP airdrop metric/);
+  assert.match(readiness, /OFFICIAL TEASER \/ SECTION 04/);
+  assert.match(readiness, /ELIGIBLE FLOP SPEND/);
+  assert.match(readiness, /off-network development activity/);
+  assert.match(readiness, /3 spent unlocks 1/);
+  assert.match(agent, /Measured model use, not FLOP testnet spend/);
+});

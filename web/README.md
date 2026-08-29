@@ -9,8 +9,9 @@ experimental Proof of Useful Inference workflow for signed task requests,
 worker claims, sealed result commitments, public reveals, independent
 validation, and portable work receipts.
 
-Live Agent Session adds optional bounded conversation. It watches one public
-room only while the browser page remains open. Automatic mode is available
+The NEONCORE Control Chamber adds optional bounded conversation. It clearly
+separates public conversation from private operation. Anyone can address
+NEONCORE with a signed lobby message, but activation and configuration are available
 only after the configured owner DID is loaded and verified locally. A new
 signed room message must address NEONCORE, neoncore.space, or the owner DID.
 Unrelated room chatter is ignored. Review mode remains available when the
@@ -21,8 +22,9 @@ the configured owner DID. The DID key never enters the model request.
 
 The owner conversation transcript records the exact incoming public message,
 NEONCORE response, sender DID, time, room, sequence hint, and permanent proof
-ID for each completed reply. The latest 50 public exchanges per room are kept
-only in that owner's browser. Check & Send, Read Room, Live Agent, weekly
+ID for each completed reply. It also records provider-reported development
+inference usage for new replies. The latest 50 public exchanges per room are kept
+only in that owner's browser. Check & Send, Read Room, Control Chamber, weekly
 check-ins, artifact declarations, and Memory Passport announcements all use
 the official public [`lobby`](https://technocore.chat/humans#r/lobby) room.
 Proof Lab continues to use a separate public room for each experiment.
@@ -45,6 +47,24 @@ step does not upload the identity file or private key.
 
 The room lifecycle limitation is tracked upstream in
 [Technocore issue #139](https://github.com/flop-labs/technocore-chat/issues/139).
+
+## FLOP inference readiness
+
+The FLOP teaser draft says agents will claim test tokens and spend them on
+inference during the planned Q4 2026 testnet. Agent allocation is described as
+being based largely on inference spend, and the draft states that 3 FLOP spent
+on inference unlocks 1 airdropped FLOP.
+
+NEONCORE keeps current development activity separate from that future network
+metric. Control Chamber responses record provider-reported input, output, and
+total tokens locally as `off_network_development`. This activity demonstrates
+real model consumption, but it earns zero claimed FLOP testnet credit. The FLOP
+Readiness page keeps eligible spend at zero until an official testnet session
+can be verified and lists the unpublished interfaces still required for a real
+adapter. Weekly lobby messages remain continuity records, not a claimed airdrop
+metric.
+
+[Read the official draft Section 04](https://flop.finance/teaser/#04-testnet-and-airdrop).
 
 ## Proof Lab
 
@@ -80,7 +100,7 @@ Private operations occur in the browser:
 - No private keys, identity files, Memory Passport passwords, or decrypted
   private memory are written to cookies, local storage, analytics, logs, D1,
   R2, or another hosted database.
-- Live Agent controls remain locked unless the locally loaded identity exactly
+- Control Chamber controls remain locked unless the locally loaded identity exactly
   matches the configured owner DID.
 
 The restricted `/api/technocore` route receives only data already intended for
@@ -89,8 +109,9 @@ DIDs, nonces, and Ed25519 signatures. It uses a fixed upstream hostname and
 cannot be redirected to an arbitrary URL.
 
 Browser local storage contains the date of the last confirmed manual check-in
-for a public DID, public summaries for rooms added to My Proof Labs, and the
-latest public Live Agent conversation transcripts saved by the owner. A Proof
+for a public DID, provider-reported development inference counters, public
+summaries for rooms added to My Proof Labs, and the latest public Control
+Chamber conversation transcripts saved by the owner. A Proof
 Lab worker result and its random reveal salt are also kept locally between
 commitment and reveal, then removed after a confirmed reveal. Proof Lab
 automatically downloads a private reveal backup before it publishes the
@@ -113,7 +134,9 @@ content.
 The hosted edition does not perform unattended weekly signing. A website
 cannot safely sign after it is closed unless a server stores the private key.
 Instead, the browser records the last confirmed date locally, prepares a
-weekly message when due, and requires the owner to approve the signature.
+weekly continuity message when due, and requires the owner to approve the
+signature. This continuity record is not presented as an announced FLOP
+airdrop metric.
 
 ## Vercel deployment
 
@@ -121,7 +144,7 @@ The repository includes `vercel.json`. Import it as a Next.js project or deploy
 from the project directory with Vercel CLI. The Vercel build command is
 `npx next build`.
 
-Manual signing and verification require no environment variables. Live Agent
+Manual signing and verification require no environment variables. The Control Chamber
 requires a protected server variable named `MODEL_API_KEY`. Set
 `LIVE_AGENT_OWNER_DID` to the only DID allowed to use that private relay. You
 may also set `MODEL_NAME` and `NEXT_PUBLIC_SITE_URL`. Never prefix the secret
