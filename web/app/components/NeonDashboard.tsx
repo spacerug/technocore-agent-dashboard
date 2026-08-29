@@ -645,7 +645,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.4.0</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
+      <footer><span>NEONCORE · WEB 2.5.0 · PIXEL CONSOLE</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
     </main>
   );
 }

@@ -48,3 +48,15 @@ test("separates development inference from announced FLOP testnet spend", () => 
   assert.match(readiness, /3 spent unlocks 1/);
   assert.match(agent, /Measured model use, not FLOP testnet spend/);
 });
+
+test("uses the readable NEONCORE pixel console visual system", () => {
+  const css = readFileSync("app/globals.css", "utf8");
+  const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
+  assert.match(css, /NEONCORE PIXEL CONSOLE/);
+  assert.match(css, /--pixel-font:/);
+  assert.match(css, /--read-font:/);
+  assert.match(css, /repeating-linear-gradient\(180deg/);
+  assert.match(css, /text-shadow: 3px 3px 0/);
+  assert.match(css, /focus-visible/);
+  assert.match(dashboard, /WEB 2\.5\.0 · PIXEL CONSOLE/);
+});
