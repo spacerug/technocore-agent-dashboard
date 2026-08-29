@@ -12,6 +12,7 @@ export type ProofCertificateData = {
   runtimeSeconds: number;
   resultSha256: string;
   receiptSha256: string;
+  proofId: string;
   room: string;
 };
 
@@ -47,10 +48,11 @@ function splitHash(hash: string): [string, string] {
 }
 
 export async function createProofCertificatePng(data: ProofCertificateData): Promise<Blob> {
-  if (!/^poui-[0-9a-f]{12}$/.test(data.challengeId)) throw new Error("The work receipt challenge identity is invalid.");
+  if (!/^(?:proof|poui)-[0-9a-f]{12}$/.test(data.challengeId)) throw new Error("The work receipt challenge identity is invalid.");
   if (!/^[0-9a-f]{64}$/.test(data.resultSha256) || !/^[0-9a-f]{64}$/.test(data.receiptSha256)) {
     throw new Error("The work receipt fingerprints are invalid.");
   }
+  if (!/^ncwork-[0-9a-f]{64}$/.test(data.proofId)) throw new Error("The permanent work proof ID is invalid.");
   if (!data.requesterDid.startsWith("did:key:z") || !data.workerDid.startsWith("did:key:z")) {
     throw new Error("The work receipt DIDs are invalid.");
   }
@@ -116,6 +118,9 @@ export async function createProofCertificatePng(data: ProofCertificateData): Pro
   context.fillStyle = "#23f77a";
   context.font = "700 25px Courier New, monospace";
   context.fillText(`${data.challengeId}  /  ROOM ${data.room}`, 88, 350);
+  context.fillStyle = "#82a98f";
+  context.font = "15px Courier New, monospace";
+  context.fillText(`PERMANENT PROOF ID  ${data.proofId}`, 88, 382);
 
   const rows = [
     ["REQUESTER DID", data.requesterDid],
@@ -193,4 +198,3 @@ export async function createProofCertificatePng(data: ProofCertificateData): Pro
 export function proofCertificateFilename(data: ProofCertificateData): string {
   return `${data.challengeId}-public-work-certificate.png`;
 }
-

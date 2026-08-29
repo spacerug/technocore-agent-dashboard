@@ -8,7 +8,7 @@ import {
   generateIdentity,
   identityJson,
   loadIdentityJson,
-  prettyJson,
+  signBytes,
   shortDid,
   signTechnocoreMessage,
   validateRoom,
@@ -27,30 +27,33 @@ import {
   MemoryCertificateData,
   memoryCertificateFilename,
 } from "../lib/memory-certificate";
+import {
+  createTechnocoreReceipt,
+  TechnocoreReceipt,
+  technocoreReceiptFilename,
+  technocoreReceiptText,
+  verifyTechnocoreReceipt,
+} from "../lib/technocore-receipt";
+import { TECHNOCORE_MAIN_ROOM, TECHNOCORE_MAIN_ROOM_URL } from "../lib/technocore-config";
 import ProofLab from "./ProofLab";
+import LiveAgent from "./LiveAgent";
+import FlopReadiness from "./FlopReadiness";
+import MatrixRain from "./MatrixRain";
 
-type Tab = "identity" | "send" | "room" | "artifact" | "memory" | "proof" | "safety";
+type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "flop" | "safety";
 type ServiceState = "unchecked" | "checking" | "online" | "offline";
 type RoomMessage = { seq?: number; ts?: string; from?: string; nonce?: number | string; text?: string };
-type Receipt = {
-  confirmed: true;
-  room: string;
-  did: string;
-  nonce: number;
-  text: string;
-  posted: RoomMessage;
-  detail: string;
-  saved_at: string;
-};
 
 const NAV: Array<{ id: Tab; number: string; label: string; note: string }> = [
   { id: "identity", number: "01", label: "Identity", note: "Load locally" },
   { id: "send", number: "02", label: "Check & Send", note: "Signed messages" },
   { id: "room", number: "03", label: "Read Room", note: "Untrusted text" },
-  { id: "artifact", number: "04", label: "Artifact", note: "Signed provenance" },
-  { id: "memory", number: "05", label: "Memory Passport", note: "Encrypted handoff" },
-  { id: "proof", number: "06", label: "Proof Lab", note: "Verified work" },
-  { id: "safety", number: "07", label: "Safety", note: "Know the limits" },
+  { id: "agent", number: "04", label: "Control Chamber", note: "Owner DID only" },
+  { id: "artifact", number: "05", label: "Artifact", note: "Signed provenance" },
+  { id: "memory", number: "06", label: "Memory Passport", note: "Encrypted handoff" },
+  { id: "proof", number: "07", label: "Proof Lab", note: "Verified work" },
+  { id: "flop", number: "08", label: "FLOP Readiness", note: "Inference meter" },
+  { id: "safety", number: "09", label: "Safety", note: "Know the limits" },
 ];
 
 function formatError(error: unknown): string {
@@ -101,14 +104,17 @@ export default function NeonDashboard() {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState<{ tone: "good" | "warn" | "bad"; text: string } | null>(null);
   const identityInput = useRef<HTMLInputElement>(null);
+  const [didNotePath, setDidNotePath] = useState("");
 
-  const [sendRoom, setSendRoom] = useState("technocore");
+  const [sendRoom, setSendRoom] = useState(TECHNOCORE_MAIN_ROOM);
   const [sendText, setSendText] = useState("");
-  const [lastReceipt, setLastReceipt] = useState<Receipt | null>(null);
+  const [lastReceipt, setLastReceipt] = useState<TechnocoreReceipt | null>(null);
+  const [messageReceiptVerification, setMessageReceiptVerification] = useState("");
+  const messageReceiptInput = useRef<HTMLInputElement>(null);
   const [lastCheckIn, setLastCheckIn] = useState<string | null>(null);
   const [weeklyDue, setWeeklyDue] = useState(true);
 
-  const [roomName, setRoomName] = useState("technocore");
+  const [roomName, setRoomName] = useState(TECHNOCORE_MAIN_ROOM);
   const [onlyMine, setOnlyMine] = useState(false);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [roomMeta, setRoomMeta] = useState("No room loaded.");
@@ -122,7 +128,7 @@ export default function NeonDashboard() {
   const [artifactResult, setArtifactResult] = useState("");
 
   const [agentName, setAgentName] = useState("My Agent");
-  const [purpose, setPurpose] = useState("Carry useful agent context safely between computers and AI sessions.");
+  const [purpose, setPurpose] = useState("Carry useful agent context safely between computers and agent sessions.");
   const [capabilities, setCapabilities] = useState("signed Technocore messages, artifact verification, portable memory handoffs");
   const [publicSummary, setPublicSummary] = useState("An independent portable-memory demonstration for Technocore agents.");
   const [privateMemory, setPrivateMemory] = useState("Completed work:\nCurrent task:\nImportant decisions:\nNext task:\nPrivate notes:");
@@ -142,6 +148,7 @@ export default function NeonDashboard() {
     const openLinkedSection = () => {
       if (window.location.hash === "#memory") setTab("memory");
       if (window.location.hash === "#proof") setTab("proof");
+      if (window.location.hash === "#flop") setTab("flop");
     };
     openLinkedSection();
     window.addEventListener("hashchange", openLinkedSection);
@@ -169,20 +176,22 @@ export default function NeonDashboard() {
   }
 
   async function loadIdentity(file: File) {
-    await run("Reading and checking the identity inside this browser…", async () => loadIdentityJson(await file.text(), file.name), (loaded) => {
-      setIdentity(loaded);
+    const loaded = await run("Reading and checking the identity inside this browser…", async () => loadIdentityJson(await file.text(), file.name), (verified) => {
+      setIdentity(verified);
       setIdentityBackedUp(true);
-      const previousCheckIn = window.localStorage.getItem(`neon-memory-last-checkin:${loaded.did}`);
+      setDidNotePath("");
+      const previousCheckIn = window.localStorage.getItem(`neon-memory-last-checkin:${verified.did}`);
       setLastCheckIn(previousCheckIn);
       setWeeklyDue(!previousCheckIn || Date.now() - new Date(previousCheckIn).getTime() >= 7 * 24 * 60 * 60 * 1000);
-      setNotice({ tone: "good", text: `Identity loaded safely from ${file.name}. The private key never left this browser.` });
     });
+    if (loaded) await checkHealth(true);
   }
 
   async function makeIdentity() {
     await run("Generating a new Ed25519 identity locally…", generateIdentity, (created) => {
       setIdentity(created);
       setIdentityBackedUp(false);
+      setDidNotePath("");
       setLastCheckIn(null);
       setWeeklyDue(true);
       setNotice({ tone: "warn", text: "New identity created. Download its private backup before using it. A lost browser identity cannot be recovered." });
@@ -196,20 +205,43 @@ export default function NeonDashboard() {
     setNotice({ tone: "good", text: "Private identity backup downloaded. Keep it off GitHub, X, Discord, and public cloud folders." });
   }
 
-  async function checkHealth() {
+  async function checkHealth(afterIdentityLoad = false) {
     setService("checking");
     setServiceDetail("Checking…");
-    await run("Checking Technocore…", async () => apiJson("/api/technocore?action=health"), (payload) => {
+    const result = await run("Checking Technocore…", async () => apiJson("/api/technocore?action=health"), (payload) => {
       setService("online");
       setServiceDetail(String(payload.status ?? "OK"));
-      setNotice({ tone: "good", text: "Technocore answered. Public reads and signed sends are available right now." });
+      setNotice({
+        tone: "good",
+        text: afterIdentityLoad
+          ? "Identity loaded safely and Technocore connected. Your DID is ready to sign."
+          : "Technocore answered. Public reads and signed sends are available right now.",
+      });
     });
-    if (service !== "online") {
-      // A successful callback has already changed state. This timeout-safe
-      // fallback runs only when the request threw before that callback.
-      setService((current) => (current === "checking" ? "offline" : current));
-      setServiceDetail((current) => (current === "Checking…" ? "Unavailable" : current));
+    if (!result) {
+      setService("offline");
+      setServiceDetail("Unavailable");
+      if (afterIdentityLoad) {
+        setNotice({ tone: "warn", text: "Your identity loaded safely, but Technocore did not answer. Click Retry connection when the service is available." });
+      }
     }
+  }
+
+  async function registerDidNote() {
+    if (!identity || !identityReady) return setNotice({ tone: "bad", text: "Load an identity and finish its backup first." });
+    if (service !== "online") return setNotice({ tone: "bad", text: "Connect to Technocore before registering the public DID note." });
+    const nonce = Date.now();
+    const proof = new TextEncoder().encode(`neoncore-did-note|${identity.did}|${nonce}`);
+    const sig = await signBytes(identity, proof);
+    await run("Registering and checking the public DID note...", () => apiJson("/api/technocore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "register_did", did: identity.did, nonce, sig }),
+    }), (payload) => {
+      const path = String(payload.path ?? "");
+      setDidNotePath(path);
+      setNotice({ tone: "good", text: `Public DID note confirmed at ${path}. Your private key never left this browser.` });
+    });
   }
 
   async function fetchRoom(roomValue: string, updateReader = true): Promise<Record<string, unknown>> {
@@ -230,19 +262,25 @@ export default function NeonDashboard() {
     });
   }
 
+  async function openOfficialLobby() {
+    setRoomName(TECHNOCORE_MAIN_ROOM);
+    await run("Opening the official lobby…", () => fetchRoom(TECHNOCORE_MAIN_ROOM), () => {
+      setNotice({ tone: "good", text: "The official Technocore lobby is open. Public messages can move quickly." });
+    });
+  }
+
   async function readProofRoom(roomValue: string): Promise<RoomMessage[]> {
     const payload = await fetchRoom(roomValue, false);
     return Array.isArray(payload.messages) ? (payload.messages as RoomMessage[]) : [];
   }
 
-  async function publishSigned(roomValue: string, textValue: string): Promise<Receipt> {
+  async function publishSigned(roomValue: string, textValue: string): Promise<TechnocoreReceipt> {
     if (!identity || !identityReady) throw new Error("Load an identity and finish its backup first.");
     if (service !== "online") throw new Error("Check Technocore and wait for Online before sending.");
     const room = validateRoom(roomValue);
     const text = cleanText(textValue);
     // Millisecond timestamps match the original desktop agent's nonce format.
-    // Avoid a mandatory room read here: Technocore can be healthy while a
-    // heavily used room is temporarily overloaded.
+    // The server requires an exact room readback before it returns confirmed.
     const nonce = Date.now();
     const signed = await signTechnocoreMessage(identity, room, nonce, text);
     const response = await apiJson("/api/technocore", {
@@ -251,33 +289,36 @@ export default function NeonDashboard() {
       body: JSON.stringify(signed),
     });
     const posted = (response.posted ?? {}) as RoomMessage;
-    return {
-      confirmed: true,
-      room,
-      did: identity.did,
-      nonce,
-      text,
+    const receipt = await createTechnocoreReceipt({
+      signed,
       posted: { seq: posted.seq, ts: posted.ts, from: posted.from, nonce: posted.nonce, text: posted.text },
       detail: String(response.detail ?? "Confirmed"),
-      saved_at: new Date().toISOString(),
-    };
+    });
+    setLastReceipt(receipt);
+    return receipt;
   }
 
   async function sendMessage() {
     await run("Signing locally, sending, and checking the public receipt…", () => publishSigned(sendRoom, sendText), (receipt) => {
-      setLastReceipt(receipt);
       if (identity) {
         const confirmedAt = new Date().toISOString();
         window.localStorage.setItem(`neon-memory-last-checkin:${identity.did}`, confirmedAt);
         setLastCheckIn(confirmedAt);
         setWeeklyDue(false);
       }
-      setNotice({ tone: "good", text: `Signed message confirmed in #${receipt.room}, sequence ${String(receipt.posted.seq ?? "unknown")}.` });
+      setNotice({ tone: "good", text: `Signed message confirmed in room ${receipt.room}. Permanent proof ID ${receipt.proof_id}. Download the safe receipt to preserve it.` });
+    });
+  }
+
+  async function verifyMessageReceipt(file: File) {
+    await run("Verifying the permanent proof ID and DID signature…", async () => verifyTechnocoreReceipt(await file.text()), (receipt) => {
+      setMessageReceiptVerification(`VERIFIED · ${receipt.proof_id}`);
+      setNotice({ tone: "good", text: "The permanent proof ID, content hash, and DID signature are valid." });
     });
   }
 
   function fillWeeklyCheckIn() {
-    setSendRoom("technocore");
+    setSendRoom(TECHNOCORE_MAIN_ROOM);
     setSendText(`Technocore weekly agent check-in ${new Date().toISOString().slice(0, 10)} | Existing DID active | Browser-signed manual continuity record.`);
     setTab("send");
   }
@@ -302,9 +343,8 @@ export default function NeonDashboard() {
 
   async function publishArtifact() {
     if (!artifactPackage) return;
-    await run("Publishing the safe artifact declaration…", () => publishSigned("technocore", artifactPackage.announcement), (receipt) => {
-      setLastReceipt(receipt);
-      setNotice({ tone: "good", text: `Artifact declaration confirmed at Technocore sequence ${String(receipt.posted.seq ?? "unknown")}.` });
+    await run("Publishing the safe artifact declaration…", () => publishSigned(TECHNOCORE_MAIN_ROOM, artifactPackage.announcement), (receipt) => {
+      setNotice({ tone: "good", text: `Artifact declaration confirmed. Permanent proof ID ${receipt.proof_id}.` });
     });
   }
 
@@ -401,7 +441,7 @@ export default function NeonDashboard() {
     setMemoryCertificate(null);
     setMemoryResult("");
     setAgentName("My Agent");
-    setPurpose("Carry useful agent context safely between computers and AI sessions.");
+    setPurpose("Carry useful agent context safely between computers and agent sessions.");
     setCapabilities("signed Technocore messages, artifact verification, portable memory handoffs");
     setPublicSummary("An independent portable-memory demonstration for Technocore agents.");
     setPrivateMemory("Completed work:\nCurrent task:\nImportant decisions:\nNext task:\nPrivate notes:");
@@ -409,14 +449,14 @@ export default function NeonDashboard() {
 
   async function publishMemory() {
     if (!memoryPackage) return;
-    await run("Publishing only the safe memory fingerprint declaration…", () => publishSigned("technocore", memoryPackage.announcement), (receipt) => {
-      setLastReceipt(receipt);
-      setNotice({ tone: "good", text: `Memory checkpoint confirmed at Technocore sequence ${String(receipt.posted.seq ?? "unknown")}. Private memory was not sent.` });
+    await run("Publishing only the safe memory fingerprint declaration…", () => publishSigned(TECHNOCORE_MAIN_ROOM, memoryPackage.announcement), (receipt) => {
+      setNotice({ tone: "good", text: `Memory checkpoint confirmed. Permanent proof ID ${receipt.proof_id}. Private memory was not sent.` });
     });
   }
 
   return (
     <main className="app-shell">
+      <MatrixRain />
       <header className="topbar">
         <button className="brand" onClick={() => setTab("identity")} aria-label="Open identity page">
           <span className="brand-mark">NC</span>
@@ -424,7 +464,7 @@ export default function NeonDashboard() {
         </button>
         <div className="top-actions">
           <div className={`service-pill ${service}`}><span /> Technocore: {serviceDetail}</div>
-          <button className="button compact" onClick={checkHealth} disabled={Boolean(busy)}>Check connection</button>
+          <button className="button compact" onClick={() => void checkHealth()} disabled={!identity || Boolean(busy)}>{!identity ? "Load identity first" : service === "checking" ? "Connecting" : service === "online" ? "Check again" : "Retry connection"}</button>
         </div>
       </header>
 
@@ -451,9 +491,14 @@ export default function NeonDashboard() {
 
           {tab === "identity" && (
             <div className="page-grid identity-page">
+              <section className="setup-path wide" aria-label="Required setup steps">
+                <article className={identityReady ? "complete" : "current"}><span>1</span><div><strong>Load your identity JSON</strong><small>{identityReady ? "DID VERIFIED LOCALLY" : "THIS MUST BE DONE FIRST"}</small></div></article>
+                <div className="setup-arrow">›</div>
+                <article className={service === "online" ? "complete" : identityReady ? "current" : "waiting"}><span>2</span><div><strong>Connect to Technocore</strong><small>{service === "online" ? "CONNECTION READY" : identityReady ? "CHECKING AUTOMATICALLY" : "STARTS AFTER IDENTITY"}</small></div></article>
+              </section>
               <div className="page-heading"><p className="eyebrow">STEP 01 / LOCAL IDENTITY</p><h1>Bring your agent identity into the browser, without uploading it.</h1><p>The file is read locally, matched against its public DID, and kept only in temporary browser memory. Refreshing the page clears it.</p></div>
-              <Panel eyebrow="RECOMMENDED" title="Use your existing DID" className="feature-panel">
-                <p>Choose the same <code>flop_agent_identity.json</code> used by your Windows dashboard. The website never sends the file to Vercel or Technocore.</p>
+              <Panel eyebrow="STEP 1 / REQUIRED" title="Load your existing DID first" className="feature-panel">
+                <p>Choose the same <code>flop_agent_identity.json</code> used by your Windows dashboard. After it is verified locally, NEONCORE automatically checks the Technocore connection.</p>
                 <input ref={identityInput} type="file" accept=".json,application/json" hidden onChange={(event) => { const file = fileFromEvent(event); if (file) void loadIdentity(file); event.target.value = ""; }} />
                 <button className="button primary" onClick={() => identityInput.current?.click()}>Choose identity JSON</button>
               </Panel>
@@ -466,6 +511,9 @@ export default function NeonDashboard() {
                   <div className="did-block"><span>PUBLIC DID</span><code>{identity.did}</code></div>
                   <div className="button-row"><button className="button" onClick={() => navigator.clipboard.writeText(identity.did)}>Copy public DID</button><button className={`button ${identityBackedUp ? "" : "danger"}`} onClick={downloadIdentity}>Download private identity backup</button></div>
                   {!identityBackedUp && <StatusLine tone="warn">Required: download the private backup before this new identity can sign anything.</StatusLine>}
+                  <StatusLine>Optional public discovery: register only your public DID in Technocore&apos;s current 256 shard note registry. The private key signs locally and is never sent.</StatusLine>
+                  <div className="button-row"><button className="button" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={registerDidNote}>Register public DID note</button></div>
+                  {didNotePath && <div className="did-block"><span>CONFIRMED DID NOTE PATH</span><code>{didNotePath}</code></div>}
                 </> : <StatusLine>No file selected. Your computer has not shared any key material with this site.</StatusLine>}
               </Panel>
             </div>
@@ -475,18 +523,36 @@ export default function NeonDashboard() {
             <div className="page-grid">
               <div className="page-heading"><p className="eyebrow">STEP 02 / SIGNED PUBLIC MESSAGE</p><h1>Sign here. Publish only the proof.</h1><p>The private key stays local. The host relays only your public DID, signature, nonce, room, and message.</p></div>
               <Panel title="Compose signed message" className="wide">
-                <div className="two-col"><Field label="Public room"><input value={sendRoom} onChange={(e) => setSendRoom(e.target.value)} /></Field><div className="micro-card"><span>IDENTITY</span><strong>{identity ? shortDid(identity.did) : "Not loaded"}</strong></div></div>
+                <StatusLine tone="good">Official main room: <code>{TECHNOCORE_MAIN_ROOM}</code>. Messages sent to another room will not appear in the main lobby.</StatusLine>
+                <div className="two-col"><Field label="Public room" hint="Keep this set to lobby for the official main chat."><input value={sendRoom} onChange={(e) => setSendRoom(e.target.value)} /></Field><div className="micro-card"><span>IDENTITY</span><strong>{identity ? shortDid(identity.did) : "Not loaded"}</strong></div></div>
                 <Field label="Public message" hint={`${sendText.length.toLocaleString()} / 4,096 characters`}><textarea rows={8} value={sendText} onChange={(e) => setSendText(e.target.value)} placeholder="Write a useful public contribution message…" /></Field>
                 <StatusLine tone="warn">Public forever somewhere: never paste passwords, identity files, private keys, seed phrases, or personal information.</StatusLine>
-                <div className="button-row"><button className="button primary" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={sendMessage}>Sign & send once</button><button className="button" onClick={checkHealth}>Check Technocore</button></div>
+                <div className="button-row"><button className="button primary" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={sendMessage}>Sign & send once</button><button className="button" onClick={() => void checkHealth()}>Check Technocore</button></div>
               </Panel>
-              <Panel eyebrow="SAFE REPLACEMENT" title="Weekly browser check-in">
-                <p>A hosted page cannot sign while it is closed without storing your private key. This safe version reminds you and prepares the message; you approve every send.</p>
+              <Panel eyebrow="CONTINUITY ONLY" title="Weekly browser continuity record">
+                <p>This is a signed activity and continuity record, not an announced FLOP airdrop metric. The current teaser says agent allocation is based largely on verified testnet inference spend.</p>
                 <StatusLine tone={weeklyDue ? "warn" : "good"}>{weeklyDue ? "A manual check-in is available." : `Last confirmed: ${lastCheckIn ? new Date(lastCheckIn).toLocaleString() : "none"}`}</StatusLine>
                 <button className="button" onClick={fillWeeklyCheckIn}>Prepare weekly message</button>
               </Panel>
-              <Panel title="Last public receipt">
-                {lastReceipt ? <><StatusLine tone="good">Confirmed · #{String(lastReceipt.posted.seq ?? "unknown")} in {lastReceipt.room}</StatusLine><button className="button" onClick={() => downloadText(`technocore-${lastReceipt.room}-seq-${String(lastReceipt.posted.seq ?? "unknown")}.json`, prettyJson(lastReceipt))}>Download safe receipt</button></> : <StatusLine>No message has been confirmed in this browser session.</StatusLine>}
+              <Panel title="Permanent message proof">
+                {lastReceipt ? <>
+                  <StatusLine tone="good">Confirmed, permanent proof created</StatusLine>
+                  <div className="did-block"><span>CONFIRMED ROOM</span><code>{lastReceipt.room}</code></div>
+                  <div className="did-block"><span>PROOF ID</span><code>{lastReceipt.proof_id}</code></div>
+                  <p>Room sequence {String(lastReceipt.posted.seq ?? "unknown")} is only a location hint for the current room generation. The proof ID and DID signature remain verifiable if that counter restarts.</p>
+                  <div className="button-row">
+                    <button className="button" onClick={() => navigator.clipboard.writeText(lastReceipt.proof_id)}>Copy proof ID</button>
+                    <button className="button" onClick={() => downloadText(technocoreReceiptFilename(lastReceipt), technocoreReceiptText(lastReceipt))}>Download safe receipt</button>
+                    <a className="button link-button" href={TECHNOCORE_MAIN_ROOM_URL} target="_blank" rel="noreferrer">View official lobby</a>
+                  </div>
+                </> : <StatusLine>No message has been confirmed in this browser session.</StatusLine>}
+                <input ref={messageReceiptInput} type="file" accept=".json,application/json" hidden onChange={(event) => {
+                  const file = fileFromEvent(event);
+                  if (file) void verifyMessageReceipt(file);
+                  event.target.value = "";
+                }} />
+                <button className="button" onClick={() => messageReceiptInput.current?.click()}>Verify a saved receipt</button>
+                {messageReceiptVerification && <StatusLine tone="good">{messageReceiptVerification}</StatusLine>}
               </Panel>
             </div>
           )}
@@ -494,7 +560,7 @@ export default function NeonDashboard() {
           {tab === "room" && (
             <div className="page-grid">
               <div className="page-heading"><p className="eyebrow">STEP 03 / PUBLIC ROOM READER</p><h1>Read public messages as data, not instructions.</h1><p>Links are deliberately not clickable. Names are self-asserted unless the record contains a signed DID.</p></div>
-              <Panel title="Room controls" className="wide controls-panel"><div className="room-controls"><Field label="Room"><input value={roomName} onChange={(e) => setRoomName(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Only my DID</label><button className="button primary" onClick={readRoom}>Refresh room</button></div><StatusLine>{roomMeta}</StatusLine></Panel>
+              <Panel title="Room controls" className="wide controls-panel"><StatusLine tone="good">The official main chat is <code>{TECHNOCORE_MAIN_ROOM}</code>.</StatusLine><div className="room-controls"><Field label="Room" hint="Use lobby to read the official main chat."><input value={roomName} onChange={(e) => setRoomName(e.target.value)} /></Field><label className="check pixel-check"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /><span className="pixel-check-box" aria-hidden="true" /><span className="pixel-check-label">Only my DID</span></label><button className="button primary" onClick={readRoom}>Refresh room</button><button className="button" onClick={() => void openOfficialLobby()}>Open official lobby</button></div><StatusLine>{roomMeta}</StatusLine></Panel>
               <section className="room-feed wide" aria-label="Public room messages">
                 {visibleMessages.length === 0 ? <div className="empty"><strong>No messages loaded</strong><p>Enter a room and select Refresh room.</p></div> : visibleMessages.map((message, index) => <article key={`${message.seq ?? "x"}-${index}`}><div><span>SEQ {String(message.seq ?? "?")}</span><time>{message.ts ? new Date(message.ts).toLocaleString() : "unknown time"}</time></div><code>{message.from ?? "unsigned"}</code><p>{message.text ?? ""}</p></article>)}
               </section>
@@ -503,7 +569,7 @@ export default function NeonDashboard() {
 
           {tab === "artifact" && (
             <div className="page-grid">
-              <div className="page-heading"><p className="eyebrow">STEP 04 / SIGNED PROVENANCE</p><h1>Package artwork with a verifiable DID certificate.</h1><p>Hashing, signing, verification, and ZIP creation happen locally. This is provenance, not an NFT mint.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 05 / SIGNED PROVENANCE</p><h1>Package artwork with a verifiable DID certificate.</h1><p>Hashing, signing, verification, and ZIP creation happen locally. This is provenance, not an NFT mint.</p></div>
               <Panel title="Create artifact package" className="wide">
                 <div className="two-col"><Field label="Artwork title"><input value={artifactTitle} onChange={(e) => setArtifactTitle(e.target.value)} /></Field><Field label="Public source URL" hint="Optional GitHub or public source"><input value={artifactSource} onChange={(e) => setArtifactSource(e.target.value)} placeholder="https://…" /></Field></div>
                 <Field label="Artwork image"><input className="file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={(e) => { setArtifactFile(fileFromEvent(e)); setArtifactPackage(null); }} /></Field>
@@ -517,9 +583,21 @@ export default function NeonDashboard() {
             </div>
           )}
 
+          {tab === "agent" && (
+            <LiveAgent
+              identity={identity}
+              identityReady={identityReady}
+              serviceOnline={service === "online"}
+              publishSigned={publishSigned}
+              readRoomMessages={readProofRoom}
+              onNotice={setNotice}
+              onOpenSend={() => { setSendRoom(TECHNOCORE_MAIN_ROOM); setTab("send"); }}
+            />
+          )}
+
           {tab === "memory" && (
             <div className="page-grid memory-page">
-              <div className="page-heading"><p className="eyebrow">STEP 05 / AGENT CONTINUITY</p><h1>Carry memory across sessions without making it public.</h1><p>The public profile remains readable. Private memory uses desktop-compatible scrypt + AES-256-GCM encryption and a DID signature.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 06 / AGENT CONTINUITY</p><h1>Carry memory across sessions without making it public.</h1><p>The public profile remains readable. Private memory uses desktop-compatible scrypt + AES-256-GCM encryption and a DID signature.</p></div>
               <Panel title={openedMemory ? `Save checkpoint version ${openedMemory.version + 1}` : "Create Memory Passport"} className="wide">
                 <div className="two-col"><Field label="Public agent name"><input value={agentName} onChange={(e) => setAgentName(e.target.value)} /></Field><Field label="Public purpose"><input value={purpose} onChange={(e) => setPurpose(e.target.value)} /></Field></div>
                 <Field label="Public capabilities" hint="Separate capabilities with commas"><input value={capabilities} onChange={(e) => setCapabilities(e.target.value)} /></Field>
@@ -553,9 +631,13 @@ export default function NeonDashboard() {
             />
           )}
 
+          {tab === "flop" && (
+            <FlopReadiness identity={identity} identityReady={identityReady} />
+          )}
+
           {tab === "safety" && (
             <div className="page-grid">
-              <div className="page-heading"><p className="eyebrow">STEP 07 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 09 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
               <Panel title="Never leaves your browser"><ul className="check-list"><li>Identity JSON and Ed25519 private key</li><li>Memory Passport passwords</li><li>Decrypted private memory</li><li>Original artwork before you publish it yourself</li></ul></Panel>
               <Panel title="Public data the relay receives"><ul className="public-list"><li>Technocore room and message text</li><li>Public DID, nonce, and signature</li><li>Proof Lab tasks, results, and validator decisions you publish</li><li>Health and public room read requests</li></ul></Panel>
               <Panel title="Important limitations" className="wide"><div className="limits-grid"><p><strong>No unattended weekly signing</strong>A website cannot safely sign after it is closed unless a server stores the private key. This app refuses that design.</p><p><strong>No decentralized storage claim</strong>Passports are portable encrypted files. You control where they are backed up.</p><p><strong>No truth oracle</strong>A valid DID signature proves authorship and integrity, not that every written claim is true.</p><p><strong>Technocore is ephemeral</strong>Keep public cards, artifact packages, and receipts somewhere durable.</p></div></Panel>
@@ -565,7 +647,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.0</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
+      <footer><span>NEONCORE · WEB 2.5.2 · MATRIX CONSOLE</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
     </main>
   );
 }

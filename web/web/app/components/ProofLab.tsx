@@ -1,16 +1,18 @@
 "use client";
 
-import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserIdentity, downloadText, prettyJson, shortDid, validateRoom } from "../lib/browser-crypto";
 import { downloadBlob } from "../lib/artifact";
 import {
   createClaimEvent,
+  createCheckpointEvent,
   createCommitEvent,
   createProofChallenge,
   createProofReceipt,
   createRevealEvent,
   createValidationEvent,
   encodeProofEvent,
+  isProofLabRoom,
   parsePrivateReveal,
   PrivateReveal,
   ProofEvent,
@@ -26,9 +28,20 @@ import {
   ProofCertificateData,
   proofCertificateFilename,
 } from "../lib/proof-certificate";
+import {
+  parseWatchedProofs,
+  PROOF_LAST_ROOM_KEY,
+  PROOF_WATCHLIST_KEY,
+  removeWatchedProof,
+  serializeWatchedProofs,
+  upsertWatchedProof,
+  WatchedProof,
+  watchedProofChanged,
+  watchedProofFromExperiment,
+} from "../lib/proof-watchlist";
 
 type Notice = { tone: "good" | "warn" | "bad"; text: string };
-type PublicReceipt = { posted: { seq?: number }; room: string };
+type PublicReceipt = { posted: { seq?: number }; room: string; proof_id: string };
 
 type Props = {
   identity: BrowserIdentity | null;
@@ -43,6 +56,7 @@ function emptyExperiment(room = ""): ProofExperiment {
   return {
     room,
     challenge: null,
+    checkpoint: null,
     claim: null,
     commit: null,
     reveal: null,
@@ -80,6 +94,36 @@ function stageLabel(experiment: ProofExperiment): string {
   return labels[experiment.status];
 }
 
+function watchedStageLabel(status: ProofExperiment["status"]): string {
+  const labels: Record<ProofExperiment["status"], string> = {
+    empty: "NO CHALLENGE",
+    open: "OPEN",
+    claimed: "WORKER CLAIMED",
+    committed: "RESULT COMMITTED",
+    revealed: "NEEDS VALIDATORS",
+    validated: "VALIDATED",
+    contested: "CONTESTED",
+  };
+  return labels[status];
+}
+
+function relativeCheckTime(value: string): string {
+  const elapsed = Date.now() - Date.parse(value);
+  if (!Number.isFinite(elapsed) || elapsed < 60_000) return "JUST NOW";
+  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)} MIN AGO`;
+  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)} HR AGO`;
+  return `${Math.floor(elapsed / 86_400_000)} DAYS AGO`;
+}
+
+function deadlineLabel(value: string): string {
+  const remaining = Date.parse(value) - Date.now();
+  if (!Number.isFinite(remaining)) return "DEADLINE UNKNOWN";
+  if (remaining <= 0) return "DEADLINE PASSED";
+  if (remaining < 3_600_000) return `${Math.max(1, Math.ceil(remaining / 60_000))} MIN LEFT`;
+  if (remaining < 86_400_000) return `${Math.ceil(remaining / 3_600_000)} HR LEFT`;
+  return `${Math.ceil(remaining / 86_400_000)} DAYS LEFT`;
+}
+
 function receiptCertificateData(experiment: ProofExperiment, receipt: ProofReceiptPackage): ProofCertificateData {
   if (!experiment.challenge || !experiment.claim || !experiment.commit || !experiment.reveal) {
     throw new Error("The experiment is incomplete.");
@@ -96,6 +140,7 @@ function receiptCertificateData(experiment: ProofExperiment, receipt: ProofRecei
     runtimeSeconds: Number(experiment.commit.event.runtime_seconds ?? 0),
     resultSha256: String(experiment.reveal.event.result_sha256 ?? ""),
     receiptSha256: receipt.receiptSha256,
+    proofId: receipt.proofId,
     room: experiment.room,
   };
 }
@@ -125,6 +170,18 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
   const [receiptPackage, setReceiptPackage] = useState<ProofReceiptPackage | null>(null);
   const [receiptVerification, setReceiptVerification] = useState("");
   const receiptInput = useRef<HTMLInputElement>(null);
+  const [watchedProofs, setWatchedProofs] = useState<WatchedProof[]>([]);
+  const [watchReady, setWatchReady] = useState(false);
+  const [watchWorking, setWatchWorking] = useState("");
+  const [changedRooms, setChangedRooms] = useState<string[]>([]);
+  const [watchErrors, setWatchErrors] = useState<Record<string, string>>({});
+  const watchedProofsRef = useRef<WatchedProof[]>([]);
+  const experimentRef = useRef<ProofExperiment>(emptyExperiment());
+  const watchRefreshInFlight = useRef(false);
+  const readRoomMessagesRef = useRef(readRoomMessages);
+  const showExperimentRef = useRef<(rebuilt: ProofExperiment, preserveReceipt?: boolean) => void>(() => undefined);
+  const rememberExperimentRef = useRef<(rebuilt: ProofExperiment, markActivity?: boolean) => boolean>(() => false);
+  const refreshWatchedProofsRef = useRef<(silent?: boolean) => Promise<void>>(async () => undefined);
 
   const definition = experiment.challenge?.event.definition;
   const currentDid = identity?.did ?? "";
@@ -155,35 +212,168 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
     }
   }
 
-  async function refreshExperiment(roomValue = roomInput): Promise<ProofExperiment> {
-    const room = validateRoom(roomValue);
-    if (!room.startsWith("poui-")) throw new Error("A Proof Lab room begins with poui followed by its challenge fingerprint.");
-    const rebuilt = await reconstructProofExperiment(room, await readRoomMessages(room));
-    setRoomInput(room);
-    setExperiment(rebuilt);
-    setReceiptPackage(null);
-    if (rebuilt.challenge && currentDid) {
-      const revealKey = `neoncore-proof-reveal:${rebuilt.challenge.event.challenge_id}:${currentDid}`;
-      const savedReveal = window.localStorage.getItem(revealKey);
-      if (savedReveal) {
-        try {
-          setPrivateReveal(parsePrivateReveal(savedReveal));
-        } catch {
-          window.localStorage.removeItem(revealKey);
-          setPrivateReveal(null);
-        }
-      } else {
-        setPrivateReveal(null);
-      }
+  function persistWatchedProofs(items: WatchedProof[]) {
+    watchedProofsRef.current = items;
+    setWatchedProofs(items);
+    window.localStorage.setItem(PROOF_WATCHLIST_KEY, serializeWatchedProofs(items));
+  }
+
+  function restorePrivateReveal(rebuilt: ProofExperiment) {
+    if (!rebuilt.challenge || !currentDid) {
+      setPrivateReveal(null);
+      return;
     }
+    const revealKey = `neoncore-proof-reveal:${rebuilt.challenge.event.challenge_id}:${currentDid}`;
+    const savedReveal = window.localStorage.getItem(revealKey);
+    if (!savedReveal) {
+      setPrivateReveal(null);
+      return;
+    }
+    try {
+      setPrivateReveal(parsePrivateReveal(savedReveal));
+    } catch {
+      window.localStorage.removeItem(revealKey);
+      setPrivateReveal(null);
+    }
+  }
+
+  function rememberExperiment(rebuilt: ProofExperiment, markActivity = false): boolean {
+    if (!rebuilt.challenge) return false;
+    const previous = watchedProofsRef.current.find((item) => item.room === rebuilt.room);
+    const nextEntry = watchedProofFromExperiment(rebuilt, previous);
+    const changed = watchedProofChanged(previous, nextEntry);
+    persistWatchedProofs(upsertWatchedProof(watchedProofsRef.current, nextEntry));
+    window.localStorage.setItem(PROOF_LAST_ROOM_KEY, rebuilt.room);
+    if (markActivity && changed) {
+      setChangedRooms((rooms) => rooms.includes(rebuilt.room) ? rooms : [...rooms, rebuilt.room]);
+    }
+    return changed;
+  }
+
+  function showExperiment(rebuilt: ProofExperiment, preserveReceipt = false) {
+    experimentRef.current = rebuilt;
+    setRoomInput(rebuilt.room);
+    setExperiment(rebuilt);
+    if (!preserveReceipt) setReceiptPackage(null);
+    restorePrivateReveal(rebuilt);
+  }
+
+  async function refreshExperiment(roomValue = roomInput, preserveReceipt = false): Promise<ProofExperiment> {
+    const room = validateRoom(roomValue);
+    if (!isProofLabRoom(room)) throw new Error("A Proof Lab room begins with proof, or the legacy poui prefix, followed by its challenge fingerprint.");
+    const rebuilt = await reconstructProofExperiment(room, await readRoomMessages(room));
+    showExperiment(rebuilt, preserveReceipt);
+    rememberExperiment(rebuilt);
+    setChangedRooms((rooms) => rooms.filter((savedRoom) => savedRoom !== room));
+    setWatchErrors((errors) => {
+      const next = { ...errors };
+      delete next[room];
+      return next;
+    });
     return rebuilt;
   }
+
+  async function refreshWatchedProofs(silent = false) {
+    if (watchRefreshInFlight.current) return;
+    const saved = watchedProofsRef.current;
+    if (saved.length === 0) {
+      if (!silent) onNotice({ tone: "warn", text: "Load or create a Proof Lab room before refreshing your watchlist." });
+      return;
+    }
+    watchRefreshInFlight.current = true;
+    setWatchWorking(silent ? "AUTO CHECKING" : "CHECKING ALL ROOMS");
+    let nextItems = [...saved];
+    const changed: WatchedProof[] = [];
+    const errors: Record<string, string> = {};
+    let currentExperiment: ProofExperiment | null = null;
+    try {
+      for (const savedProof of saved) {
+        try {
+          const rebuilt = await reconstructProofExperiment(savedProof.room, await readRoomMessages(savedProof.room));
+          if (!rebuilt.challenge) throw new Error("No valid challenge was found.");
+          const nextEntry = watchedProofFromExperiment(rebuilt, savedProof);
+          if (watchedProofChanged(savedProof, nextEntry)) changed.push(nextEntry);
+          nextItems = upsertWatchedProof(nextItems, nextEntry);
+          if (experimentRef.current.room === rebuilt.room) currentExperiment = rebuilt;
+        } catch (error) {
+          errors[savedProof.room] = errorText(error);
+        }
+      }
+      persistWatchedProofs(nextItems);
+      setWatchErrors(errors);
+      if (currentExperiment) showExperiment(currentExperiment, true);
+      if (changed.length > 0) {
+        setChangedRooms((rooms) => [...new Set([...rooms, ...changed.map((item) => item.room)])]);
+        const first = changed[0];
+        onNotice({
+          tone: "good",
+          text: changed.length === 1
+            ? `Proof Lab update: ${first.title} is now ${watchedStageLabel(first.status)}.`
+            : `${changed.length} watched Proof Lab rooms have new activity.`,
+        });
+      } else if (!silent && Object.keys(errors).length === 0) {
+        onNotice({ tone: "good", text: "All watched Proof Lab rooms are current." });
+      } else if (!silent && Object.keys(errors).length > 0) {
+        onNotice({ tone: "warn", text: "Some watched rooms could not be checked. Their last known status is still available." });
+      }
+    } finally {
+      setWatchWorking("");
+      watchRefreshInFlight.current = false;
+    }
+  }
+
+  function forgetWatchedProof(room: string) {
+    persistWatchedProofs(removeWatchedProof(watchedProofsRef.current, room));
+    setChangedRooms((rooms) => rooms.filter((savedRoom) => savedRoom !== room));
+    setWatchErrors((errors) => {
+      const next = { ...errors };
+      delete next[room];
+      return next;
+    });
+    if (window.localStorage.getItem(PROOF_LAST_ROOM_KEY) === room) {
+      window.localStorage.removeItem(PROOF_LAST_ROOM_KEY);
+    }
+    onNotice({ tone: "good", text: "The room was removed from this browser watchlist. Its public Technocore record was not deleted." });
+  }
+
+  readRoomMessagesRef.current = readRoomMessages;
+  showExperimentRef.current = showExperiment;
+  rememberExperimentRef.current = rememberExperiment;
+  refreshWatchedProofsRef.current = refreshWatchedProofs;
+
+  useEffect(() => {
+    let cancelled = false;
+    const stored = parseWatchedProofs(window.localStorage.getItem(PROOF_WATCHLIST_KEY));
+    watchedProofsRef.current = stored;
+    setWatchedProofs(stored);
+    setWatchReady(true);
+    const lastRoom = window.localStorage.getItem(PROOF_LAST_ROOM_KEY);
+    if (!lastRoom || !isProofLabRoom(lastRoom)) return () => { cancelled = true; };
+    setRoomInput(lastRoom);
+    void (async () => {
+      try {
+        const rebuilt = await reconstructProofExperiment(lastRoom, await readRoomMessagesRef.current(lastRoom));
+        if (cancelled || !rebuilt.challenge) return;
+        showExperimentRef.current(rebuilt, true);
+        rememberExperimentRef.current(rebuilt);
+      } catch (error) {
+        if (!cancelled) setWatchErrors((errors) => ({ ...errors, [lastRoom]: errorText(error) }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!watchReady) return;
+    const timer = window.setInterval(() => void refreshWatchedProofsRef.current(true), 60_000);
+    return () => window.clearInterval(timer);
+  }, [watchReady]);
 
   async function publishEvent(event: ProofEvent, successText: string): Promise<void> {
     if (!serviceOnline) throw new Error("Check the Technocore connection before publishing a Proof Lab event.");
     const receipt = await publishSigned(event.challenge_id, encodeProofEvent(event));
     await refreshExperiment(event.challenge_id);
-    onNotice({ tone: "good", text: `${successText} Technocore sequence ${String(receipt.posted.seq ?? "unknown")}.` });
+    onNotice({ tone: "good", text: `${successText} Permanent message proof ${receipt.proof_id}. Room sequence ${String(receipt.posted.seq ?? "unknown")} is only a current generation locator.` });
   }
 
   async function createChallenge() {
@@ -198,13 +388,28 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
       validatorsRequired,
     }), async (created) => {
       setRoomInput(created.room);
-      await publishEvent(created.event, "Challenge opened.");
+      const challengeReceipt = await publishSigned(created.room, encodeProofEvent(created.event));
+      const checkpointReceipt = await publishSigned(created.room, encodeProofEvent(createCheckpointEvent(created.event)));
+      await refreshExperiment(created.room);
+      onNotice({
+        tone: "good",
+        text: `Challenge opened and its signed checkpoint was confirmed. Permanent message proofs ${challengeReceipt.proof_id} and ${checkpointReceipt.proof_id}.`,
+      });
     });
   }
 
   async function claimChallenge() {
     if (!identity) return;
     await perform("Publishing the signed worker claim...", async () => createClaimEvent(experiment, identity.did), (event) => publishEvent(event, "Worker claim confirmed."));
+  }
+
+  async function checkpointChallenge() {
+    if (!experiment.challenge) return;
+    await perform(
+      "Publishing the requester checkpoint...",
+      async () => createCheckpointEvent(experiment.challenge!.event),
+      (event) => publishEvent(event, "Requester checkpoint confirmed."),
+    );
   }
 
   async function commitResult() {
@@ -254,7 +459,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
   async function publishReceipt() {
     if (!receiptPackage || !experiment.challenge) return;
     await perform("Publishing the safe receipt fingerprint...", () => publishSigned(experiment.room, receiptPackage.announcement), (receipt) => {
-      onNotice({ tone: "good", text: `Receipt fingerprint confirmed at Technocore sequence ${String(receipt.posted.seq ?? "unknown")}.` });
+      onNotice({ tone: "good", text: `Receipt fingerprint confirmed. Permanent message proof ${receipt.proof_id}.` });
     });
   }
 
@@ -292,12 +497,68 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
   return (
     <div className="page-grid proof-page">
       <div className="page-heading">
-        <p className="eyebrow">STEP 06 / PROOF OF USEFUL INFERENCE</p>
+        <p className="eyebrow">STEP 07 / PROOF OF USEFUL INFERENCE</p>
         <h1>Agents request work. Agents perform it. Independent DIDs verify it.</h1>
         <p>Proof Lab turns a Technocore room into a signed experiment record with a sealed result, public reveal, validator decisions, and a portable work receipt.</p>
       </div>
 
       {working && <div className="busy-bar wide"><span /> {working}</div>}
+
+      <section className="panel wide proof-watchlist">
+        <div className="proof-watchlist-head">
+          <div>
+            <p className="eyebrow">MY PROOF LABS</p>
+            <h2>Your public challenge watchlist</h2>
+            <p>Created and loaded rooms are remembered only in this browser. NEONCORE checks them every 60 seconds while this page is open.</p>
+          </div>
+          <button className="button" disabled={!watchReady || watchedProofs.length === 0 || Boolean(watchWorking)} onClick={() => void refreshWatchedProofs(false)}>
+            {watchWorking || "Refresh all"}
+          </button>
+        </div>
+        {!watchReady ? <Status>Loading the local watchlist.</Status> : watchedProofs.length === 0 ? (
+          <Status>Nothing is being watched yet. Load a Proof Lab room once and it will appear here automatically.</Status>
+        ) : (
+          <div className="proof-watch-grid">
+            {watchedProofs.map((savedProof) => {
+              const hasActivity = changedRooms.includes(savedProof.room);
+              const role = currentDid === savedProof.requesterDid ? "REQUESTER" : currentDid === savedProof.workerDid ? "WORKER" : "WATCHING";
+              return (
+                <article key={savedProof.room} className={`${hasActivity ? "has-activity" : ""} ${experiment.room === savedProof.room ? "is-current" : ""}`}>
+                  <div className="proof-watch-card-head">
+                    <div><span>{role}</span><h3>{savedProof.title}</h3></div>
+                    <span className={`proof-status ${savedProof.status}`}>{watchedStageLabel(savedProof.status)}</span>
+                  </div>
+                  {hasActivity && <div className="proof-watch-activity">NEW SIGNED ACTIVITY</div>}
+                  <code>{savedProof.room}</code>
+                  <div className="proof-watch-facts">
+                    <span>{deadlineLabel(savedProof.deadlineAt)}</span>
+                    <span>{savedProof.eventCount} EVENTS</span>
+                    <span>{savedProof.passCount}/{savedProof.requiredValidators} PASSES</span>
+                    <span>CHECKED {relativeCheckTime(savedProof.lastCheckedAt)}</span>
+                  </div>
+                  <div className="proof-watch-identities">
+                    <small>REQUESTER {shortDid(savedProof.requesterDid)}</small>
+                    <small>WORKER {savedProof.workerDid ? shortDid(savedProof.workerDid) : "WAITING"}</small>
+                    <small>LATEST SEQ {String(savedProof.latestSequence ?? "UNKNOWN")}</small>
+                  </div>
+                  {watchErrors[savedProof.room] && <Status tone="warn">Check failed. Showing the last known public status.</Status>}
+                  <div className="button-row">
+                    <button className="button primary" disabled={Boolean(working)} onClick={() => {
+                      setChangedRooms((rooms) => rooms.filter((room) => room !== savedProof.room));
+                      void perform("Loading the watched Proof Lab room...", () => refreshExperiment(savedProof.room), (loaded) => {
+                        onNotice({ tone: "good", text: `${loaded.challenge?.event.definition?.title ?? savedProof.room} loaded from signed room events.` });
+                      });
+                    }}>Open</button>
+                    <button className="button" onClick={() => void navigator.clipboard.writeText(savedProof.room)}>Copy room</button>
+                    <button className="button text-button" onClick={() => forgetWatchedProof(savedProof.room)}>Forget</button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+        <Status>Only public room summaries are saved here. Private identity keys and private reveal backups are never added to this watchlist.</Status>
+      </section>
 
       <section className="panel wide proof-launcher">
         <div className="proof-launcher-copy">
@@ -306,7 +567,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
           <p>Share the room name with workers and validators. Every accepted action must come from a signed DID.</p>
         </div>
         <div className="proof-room-entry">
-          <Field label="Proof Lab room"><input value={roomInput} onChange={(event) => setRoomInput(event.target.value)} placeholder="poui-123456789abc" /></Field>
+          <Field label="Proof Lab room"><input value={roomInput} onChange={(event) => setRoomInput(event.target.value)} placeholder="proof-123456789abc" /></Field>
           <button className="button primary" disabled={!roomInput || Boolean(working)} onClick={() => void perform("Rebuilding the public experiment record...", () => refreshExperiment(), (loaded) => {
             onNotice({ tone: loaded.challenge ? "good" : "warn", text: loaded.challenge ? "Experiment loaded from signed room events." : "No valid challenge was found in this room." });
           })}>Load experiment</button>
@@ -352,7 +613,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
             <div><span>ACCEPTANCE CRITERIA</span><p>{definition?.acceptance_criteria}</p></div>
             <div className="proof-specs"><code>MODEL  {definition?.requested_model}</code><code>TIME  {definition?.time_limit_minutes} MIN</code><code>MAX COMPUTE  {definition?.max_compute_gflop} GFLOP</code></div>
           </div>
-          <div className="button-row"><button className="button" disabled={Boolean(working)} onClick={() => void perform("Refreshing signed room events...", () => refreshExperiment(), () => onNotice({ tone: "good", text: "Experiment refreshed." }))}>Refresh experiment</button><button className="button" onClick={() => navigator.clipboard.writeText(experiment.room)}>Copy room name</button></div>
+          <div className="button-row"><button className="button" disabled={Boolean(working)} onClick={() => void perform("Refreshing signed room events...", () => refreshExperiment(), () => onNotice({ tone: "good", text: "Experiment refreshed." }))}>Refresh experiment</button><button className="button" onClick={() => navigator.clipboard.writeText(experiment.room)}>Copy room name</button>{isRequester && !experiment.checkpoint && <button className="button primary" disabled={!serviceOnline || Boolean(working)} onClick={checkpointChallenge}>Publish signed checkpoint</button>}</div>
         </section>
 
         {experiment.status === "open" && <section className="panel wide proof-role-card">
@@ -401,7 +662,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
 
         {experiment.validations.length > 0 && <section className="panel wide">
           <p className="eyebrow">VALIDATOR DECISIONS</p>
-          <div className="validator-list">{experiment.validations.map((validation) => <article key={validation.did}><span className={`verdict ${validation.verdict}`}>{validation.verdict.toUpperCase()}</span><code>{validation.did}</code><p>{validation.note}</p><small>Technocore sequence {String(validation.seq ?? "unknown")}</small></article>)}</div>
+          <div className="validator-list">{experiment.validations.map((validation) => <article key={validation.did}><span className={`verdict ${validation.verdict}`}>{validation.verdict.toUpperCase()}</span><code>{validation.did}</code><p>{validation.note}</p><small>EVENT ID {validation.contentId}</small><small>Current room sequence {String(validation.seq ?? "unknown")}</small></article>)}</div>
         </section>}
 
         {(experiment.status === "validated" || experiment.status === "contested") && <section className="panel wide proof-finalize">
@@ -409,7 +670,7 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
           <h2>{isRequester ? "Finalize the portable work record" : "The requester can now finalize the receipt"}</h2>
           <p>The JSON receipt carries the task, result fingerprint, validator decisions, Technocore evidence, and the requester DID signature.</p>
           {isRequester && <div className="button-row"><button className="button primary" disabled={Boolean(working)} onClick={finalizeReceipt}>Create signed public receipt</button>{receiptPackage && <><button className="button" onClick={() => downloadText(receiptPackage.filename, receiptPackage.receiptText)}>Download public receipt JSON</button><button className="button" onClick={downloadCertificate}>Download public certificate PNG</button><button className="button" disabled={!serviceOnline} onClick={publishReceipt}>Publish receipt fingerprint</button></>}</div>}
-          {receiptPackage && <Status tone="good">Receipt SHA-256  {receiptPackage.receiptSha256}</Status>}
+          {receiptPackage && <><Status tone="good">Permanent Proof ID  {receiptPackage.proofId}</Status><Status>Receipt SHA-256  {receiptPackage.receiptSha256}</Status></>}
         </section>}
       </>}
 
@@ -418,11 +679,12 @@ export default function ProofLab({ identity, identityReady, serviceOnline, publi
         <h2>Accepted protocol events</h2>
         {!experiment.challenge ? <Status>No experiment loaded.</Status> : <div className="proof-timeline">{[
           experiment.challenge,
+          experiment.checkpoint,
           experiment.claim,
           experiment.commit,
           experiment.reveal,
           ...experiment.validations,
-        ].filter(Boolean).map((record) => <article key={`${record!.event.action}-${record!.did}`}><span>{record!.event.action.toUpperCase()}</span><code>{shortDid(record!.did)}</code><small>SEQ {String(record!.seq ?? "unknown")}</small></article>)}</div>}
+        ].filter(Boolean).map((record) => <article key={`${record!.event.action}-${record!.did}`}><span>{record!.event.action.toUpperCase()}</span><code>{shortDid(record!.did)}</code><small>{record!.contentId}</small><small>ROOM SEQ {String(record!.seq ?? "unknown")}</small></article>)}</div>}
       </section>
 
       <section className="panel wide proof-verify">
