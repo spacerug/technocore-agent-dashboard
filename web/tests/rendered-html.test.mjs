@@ -58,5 +58,19 @@ test("uses the readable NEONCORE pixel console visual system", () => {
   assert.match(css, /repeating-linear-gradient\(180deg/);
   assert.match(css, /text-shadow: 3px 3px 0/);
   assert.match(css, /focus-visible/);
-  assert.match(dashboard, /WEB 2\.5\.0 · PIXEL CONSOLE/);
+  assert.match(dashboard, /WEB 2\.5\.1 · MATRIX CONSOLE/);
+});
+
+test("renders accessible DID filtering above a motion-safe Matrix background", () => {
+  const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
+  const matrix = readFileSync("app/components/MatrixRain.tsx", "utf8");
+  const css = readFileSync("app/globals.css", "utf8");
+  assert.match(dashboard, /className="check pixel-check"/);
+  assert.match(dashboard, /className="pixel-check-box"/);
+  assert.match(dashboard, /WEB 2\.5\.1 · MATRIX CONSOLE/);
+  assert.match(matrix, /prefers-reduced-motion: reduce/);
+  assert.match(matrix, /aria-hidden="true"/);
+  assert.match(css, /\.matrix-rain/);
+  assert.match(css, /\.app-shell::before/);
+  assert.match(css, /pixel-check input:focus-visible \+ \.pixel-check-box/);
 });

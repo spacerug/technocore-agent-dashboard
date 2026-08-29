@@ -40,7 +40,19 @@ body {
 button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 
-.app-shell { position: relative; min-height: 100vh; }
+.app-shell { position: relative; min-height: 100vh; overflow: clip; isolation: isolate; }
+.matrix-rain { position: fixed; z-index: 0; inset: 0; width: 100%; height: 100%; opacity: .48; pointer-events: none; }
+.app-shell::before {
+  position: fixed;
+  z-index: 1;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 8%, rgba(7, 24, 12, .08), rgba(1, 5, 3, .48) 72%),
+    rgba(1, 6, 3, .24);
+  content: "";
+  pointer-events: none;
+}
+.workspace, footer { position: relative; z-index: 2; }
 
 .topbar {
   position: sticky;
@@ -264,6 +276,26 @@ input[type="file"]::file-selector-button { margin-right: 12px; padding: 7px 10px
 .room-controls .field { margin: 0; }
 .check { display: flex; align-items: center; gap: 8px; min-height: 40px; color: var(--muted); font-size: 11px; }
 .check input { width: auto; accent-color: var(--green-2); }
+.pixel-check { position: relative; min-width: 168px; min-height: 48px; padding: 7px 10px; cursor: pointer; user-select: none; }
+.pixel-check input { position: absolute; width: 1px; height: 1px; min-height: 0; margin: 0; opacity: 0; pointer-events: none; }
+.pixel-check-box {
+  position: relative;
+  display: grid;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 3px solid #6f9d7b;
+  background: #020704;
+  box-shadow: inset 0 0 0 2px #0a1710, 3px 3px 0 #010302;
+}
+.pixel-check-box::after { width: 12px; height: 12px; background: transparent; content: ""; }
+.pixel-check input:checked + .pixel-check-box { border-color: #b0ffc2; background: #092512; box-shadow: inset 0 0 0 2px #041008, 3px 3px 0 #010302, 0 0 12px rgba(124, 255, 155, .22); }
+.pixel-check input:checked + .pixel-check-box::after { background: var(--green-2); box-shadow: inset -3px -3px 0 #159d42, 0 0 7px rgba(124, 255, 155, .48); }
+.pixel-check input:focus-visible { outline: none; }
+.pixel-check input:focus-visible + .pixel-check-box { outline: 3px solid var(--amber); outline-offset: 3px; }
+.pixel-check:hover .pixel-check-box { border-color: var(--green); }
+.pixel-check-label { color: #e9ffed; font: 900 11px/1.25 var(--pixel-font); letter-spacing: .045em; text-transform: uppercase; text-shadow: 2px 2px 0 #042a12; }
 .room-feed { border: 1px solid var(--line); background: #070b08; }
 .room-feed article { padding: 17px 20px; border-bottom: 1px solid #17251c; }
 .room-feed article:last-child { border-bottom: 0; }

@@ -9,11 +9,13 @@ experimental Proof of Useful Inference workflow for signed task requests,
 worker claims, sealed result commitments, public reveals, independent
 validation, and portable work receipts.
 
-Version 2.5.0 introduces the NEONCORE Pixel Console visual system. Headings,
+Version 2.5.1 introduces the NEONCORE Matrix Pixel Console visual system. Headings,
 navigation, buttons, labels, counters, and system states use a retro game style,
 while longer instructions, DIDs, public messages, transcripts, and receipts use
-a larger high-contrast monospace treatment. The interface uses no external font
-service and preserves the existing application behavior.
+a larger high-contrast monospace treatment. A lightweight animated code-rain
+canvas stays behind a dark readability veil and becomes static when reduced
+motion is preferred. The DID room filter uses a dedicated visible pixel toggle.
+The interface uses no external font service and preserves existing behavior.
 
 The NEONCORE Control Chamber adds optional bounded conversation. It clearly
 separates public conversation from private operation. Anyone can address

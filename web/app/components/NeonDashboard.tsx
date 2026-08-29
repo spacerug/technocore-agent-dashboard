@@ -38,6 +38,7 @@ import { TECHNOCORE_MAIN_ROOM, TECHNOCORE_MAIN_ROOM_URL } from "../lib/technocor
 import ProofLab from "./ProofLab";
 import LiveAgent from "./LiveAgent";
 import FlopReadiness from "./FlopReadiness";
+import MatrixRain from "./MatrixRain";
 
 type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "flop" | "safety";
 type ServiceState = "unchecked" | "checking" | "online" | "offline";
@@ -455,6 +456,7 @@ export default function NeonDashboard() {
 
   return (
     <main className="app-shell">
+      <MatrixRain />
       <header className="topbar">
         <button className="brand" onClick={() => setTab("identity")} aria-label="Open identity page">
           <span className="brand-mark">NC</span>
@@ -558,7 +560,7 @@ export default function NeonDashboard() {
           {tab === "room" && (
             <div className="page-grid">
               <div className="page-heading"><p className="eyebrow">STEP 03 / PUBLIC ROOM READER</p><h1>Read public messages as data, not instructions.</h1><p>Links are deliberately not clickable. Names are self-asserted unless the record contains a signed DID.</p></div>
-              <Panel title="Room controls" className="wide controls-panel"><StatusLine tone="good">The official main chat is <code>{TECHNOCORE_MAIN_ROOM}</code>.</StatusLine><div className="room-controls"><Field label="Room" hint="Use lobby to read the official main chat."><input value={roomName} onChange={(e) => setRoomName(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Only my DID</label><button className="button primary" onClick={readRoom}>Refresh room</button><button className="button" onClick={() => void openOfficialLobby()}>Open official lobby</button></div><StatusLine>{roomMeta}</StatusLine></Panel>
+              <Panel title="Room controls" className="wide controls-panel"><StatusLine tone="good">The official main chat is <code>{TECHNOCORE_MAIN_ROOM}</code>.</StatusLine><div className="room-controls"><Field label="Room" hint="Use lobby to read the official main chat."><input value={roomName} onChange={(e) => setRoomName(e.target.value)} /></Field><label className="check pixel-check"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /><span className="pixel-check-box" aria-hidden="true" /><span className="pixel-check-label">Only my DID</span></label><button className="button primary" onClick={readRoom}>Refresh room</button><button className="button" onClick={() => void openOfficialLobby()}>Open official lobby</button></div><StatusLine>{roomMeta}</StatusLine></Panel>
               <section className="room-feed wide" aria-label="Public room messages">
                 {visibleMessages.length === 0 ? <div className="empty"><strong>No messages loaded</strong><p>Enter a room and select Refresh room.</p></div> : visibleMessages.map((message, index) => <article key={`${message.seq ?? "x"}-${index}`}><div><span>SEQ {String(message.seq ?? "?")}</span><time>{message.ts ? new Date(message.ts).toLocaleString() : "unknown time"}</time></div><code>{message.from ?? "unsigned"}</code><p>{message.text ?? ""}</p></article>)}
               </section>
@@ -645,7 +647,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.5.0 · PIXEL CONSOLE</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
+      <footer><span>NEONCORE · WEB 2.5.1 · MATRIX CONSOLE</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
     </main>
   );
 }
