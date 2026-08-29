@@ -52,7 +52,7 @@ const NAV: Array<{ id: Tab; number: string; label: string; note: string }> = [
   { id: "artifact", number: "05", label: "Artifact", note: "Signed provenance" },
   { id: "memory", number: "06", label: "Memory Passport", note: "Encrypted handoff" },
   { id: "proof", number: "07", label: "Proof Lab", note: "Verified work" },
-  { id: "flop", number: "08", label: "FLOP Readiness", note: "Inference meter" },
+  { id: "flop", number: "08", label: "FLOP Testnet", note: "Mission control" },
   { id: "safety", number: "09", label: "Safety", note: "Know the limits" },
 ];
 
@@ -647,7 +647,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.5.2 · MATRIX CONSOLE</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
+      <footer><span>NEONCORE · WEB 2.6.0 · TESTNET MISSION CONTROL</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
     </main>
   );
 }

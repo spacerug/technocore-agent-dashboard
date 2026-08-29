@@ -1,21 +1,21 @@
-NEONCORE V2.5.2 MATRIX CONSOLE
+NEONCORE V2.6.0 TESTNET MISSION CONTROL
 
 This package contains a clean replacement for the repository's web folder.
 
 WHAT CHANGED IN THIS RELEASE
 
-1. The Room Reader's Only my DID filter now uses a large dedicated pixel toggle.
-2. Checked and unchecked states are visually distinct and no longer collapse into a thin native checkbox.
-3. The toggle includes visible hover and keyboard-focus states.
-4. A moving Matrix-style code-rain layer now runs behind the application.
-5. A permanent dark veil keeps all panels, messages, DIDs, and controls readable.
-6. The animation uses a lightweight canvas and reduced frame rate.
-7. Reduced-motion browser settings show a static Matrix frame instead of continuous movement.
-8. Mobile layouts keep the background restrained and the DID control readable.
-9. No external font service, image dependency, or tracking dependency was added.
-10. All identity, Control Chamber, FLOP Readiness, Proof Lab, Memory Passport, messaging, and receipt behavior is preserved.
-11. Public DID registration now confirms Technocore note values even when the official safety banner wraps the response.
-12. The release passes the expanded automated test suite, lint, and production build.
+1. FLOP Readiness is now FLOP Testnet Mission Control.
+2. A 90-day planner models faucet balance, inference spend, average fees, daily pace, and session count.
+3. Unlock capacity follows the draft rule that 3 FLOP spent on inference unlocks 1 airdropped FLOP.
+4. A session composer prepares all five request fields named in the official teaser.
+5. The owner can download a DID-bound preparation kit with no private key.
+6. Every preparation record is explicitly marked draft-only and not submitted.
+7. Confirmed eligible spend remains zero until official FLOP receipts can be verified.
+8. Faucet, inference, and receipt adapters remain safely disabled until FLOP publishes the required interfaces.
+9. The moving Matrix background, readable pixel console, and visible DID filter are preserved.
+10. Public DID registration includes the official wrapped-response confirmation fix from v2.5.2.
+11. All identity, Control Chamber, Proof Lab, Memory Passport, messaging, and receipt behavior is preserved.
+12. The release passes 43 automated checks, lint, and the production build.
 
 IMPORTANT
 
@@ -32,5 +32,5 @@ FIRST TEST
 4. From another signed DID, send a new lobby message that contains NEONCORE.
 5. The owner browser will generate, sign, and publish the direct reply automatically.
 6. The exact question and response will appear under Owner Conversation Transcript.
-7. Open FLOP Readiness to see the development inference totals. They must remain clearly labeled as not FLOP testnet spend.
-8. Confirm the footer says NEONCORE WEB 2.5.2 MATRIX CONSOLE.
+7. Open FLOP Testnet to see the 90-day planner, session composer, and development inference totals.
+8. Confirm the footer says NEONCORE WEB 2.6.0 TESTNET MISSION CONTROL.

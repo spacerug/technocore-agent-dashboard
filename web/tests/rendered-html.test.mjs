@@ -36,16 +36,20 @@ test("brands agent operation as a single owner Control Chamber", () => {
   assert.match(agent, /if \(!ownerAuthorized\) return/);
 });
 
-test("separates development inference from announced FLOP testnet spend", () => {
+test("prepares FLOP testnet activity without claiming development spend", () => {
   const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
   const readiness = readFileSync("app/components/FlopReadiness.tsx", "utf8");
   const agent = readFileSync("app/components/LiveAgent.tsx", "utf8");
-  assert.match(dashboard, /label: "FLOP Readiness", note: "Inference meter"/);
+  assert.match(dashboard, /label: "FLOP Testnet", note: "Mission control"/);
   assert.match(dashboard, /not an announced FLOP airdrop metric/);
   assert.match(readiness, /OFFICIAL TEASER \/ SECTION 04/);
   assert.match(readiness, /ELIGIBLE FLOP SPEND/);
   assert.match(readiness, /off-network development activity/);
   assert.match(readiness, /3 spent unlocks 1/);
+  assert.match(readiness, /90-DAY FAUCET SPEND PLANNER/);
+  assert.match(readiness, /SESSION REQUEST PREPARATION/);
+  assert.match(readiness, /Download testnet preparation kit/);
+  assert.match(readiness, /planning_only_not_submitted/);
   assert.match(agent, /Measured model use, not FLOP testnet spend/);
 });
 
@@ -58,7 +62,7 @@ test("uses the readable NEONCORE pixel console visual system", () => {
   assert.match(css, /repeating-linear-gradient\(180deg/);
   assert.match(css, /text-shadow: 3px 3px 0/);
   assert.match(css, /focus-visible/);
-  assert.match(dashboard, /WEB 2\.5\.2 · MATRIX CONSOLE/);
+  assert.match(dashboard, /WEB 2\.6\.0 · TESTNET MISSION CONTROL/);
 });
 
 test("renders accessible DID filtering above a motion-safe Matrix background", () => {
@@ -67,7 +71,7 @@ test("renders accessible DID filtering above a motion-safe Matrix background", (
   const css = readFileSync("app/globals.css", "utf8");
   assert.match(dashboard, /className="check pixel-check"/);
   assert.match(dashboard, /className="pixel-check-box"/);
-  assert.match(dashboard, /WEB 2\.5\.2 · MATRIX CONSOLE/);
+  assert.match(dashboard, /WEB 2\.6\.0 · TESTNET MISSION CONTROL/);
   assert.match(matrix, /prefers-reduced-motion: reduce/);
   assert.match(matrix, /aria-hidden="true"/);
   assert.match(css, /\.matrix-rain/);

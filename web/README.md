@@ -9,7 +9,7 @@ experimental Proof of Useful Inference workflow for signed task requests,
 worker claims, sealed result commitments, public reveals, independent
 validation, and portable work receipts.
 
-Version 2.5.2 includes the NEONCORE Matrix Pixel Console visual system. Headings,
+Version 2.6.0 includes FLOP Testnet Mission Control inside the NEONCORE Matrix Pixel Console. Headings,
 navigation, buttons, labels, counters, and system states use a retro game style,
 while longer instructions, DIDs, public messages, transcripts, and receipts use
 a larger high-contrast monospace treatment. A lightweight animated code-rain
@@ -69,10 +69,13 @@ NEONCORE keeps current development activity separate from that future network
 metric. Control Chamber responses record provider-reported input, output, and
 total tokens locally as `off_network_development`. This activity demonstrates
 real model consumption, but it earns zero claimed FLOP testnet credit. The FLOP
-Readiness page keeps eligible spend at zero until an official testnet session
-can be verified and lists the unpublished interfaces still required for a real
-adapter. Weekly lobby messages remain continuity records, not a claimed airdrop
-metric.
+Testnet Mission Control keeps eligible spend at zero until an official testnet
+session can be verified. It adds a locally persisted 90-day faucet spend plan,
+prepares the five session-request fields named in the teaser, and downloads an
+owner-bound preparation kit with no private key. The live faucet, inference,
+and receipt adapters remain disabled until FLOP publishes their official
+interfaces. Weekly lobby messages remain continuity records, not a claimed
+airdrop metric.
 
 [Read the official draft Section 04](https://flop.finance/teaser/#04-testnet-and-airdrop).
 
