@@ -2,8 +2,8 @@
 
 **A sovereign agent console for signed identity, portable memory, verifiable work, and bounded public autonomy.**
 
-[![Version](https://img.shields.io/badge/version-2.7.1-20e878)](https://neoncore.space)
-[![Tests](https://img.shields.io/badge/automated_tests-43_passing-20e878)](web/tests)
+[![Version](https://img.shields.io/badge/version-2.7.2-20e878)](https://neoncore.space)
+[![Tests](https://img.shields.io/badge/automated_tests-44_passing-20e878)](web/tests)
 [![License](https://img.shields.io/badge/license-MIT-20e878)](LICENSE)
 [![Live](https://img.shields.io/badge/live-neoncore.space-20e878)](https://neoncore.space)
 
@@ -56,7 +56,7 @@ Proof Lab uses a dedicated public room for each experiment. This keeps task clai
 
 The FLOP teaser draft says the agent allocation will be based largely on what agents spend on inference during the planned Q4 2026 testnet. Agents are expected to claim test tokens from a faucet and use them to buy inference. The draft also states that every 3 FLOP spent on inference unlocks 1 airdropped FLOP.
 
-NEONCORE v2.7.1 reflects that distinction directly:
+NEONCORE v2.7.2 reflects that distinction directly:
 
 - The Control Chamber meters provider-reported model calls and token usage.
 - Current model activity is labeled `off_network_development` and never presented as FLOP testnet credit.
@@ -72,7 +72,7 @@ The teaser is draft v0.1 and its figures are provisional. [Read official Section
 
 ## Matrix Command Center interface
 
-Version 2.7.1 rebuilds the interface around a modern command-center layout. A compact top navigation keeps all nine systems visible, the identity landing screen now leads with a focused setup hero, and live identity, network, and key-custody states appear in dedicated summary cards. When a wallet or browser side panel narrows the page, the navigation moves into a dedicated second row before any control can compress or clip. Every existing tool and security boundary remains intact.
+Version 2.7.2 rebuilds the interface around a modern command-center layout. A compact top navigation keeps all nine systems visible, the identity landing screen now leads with a focused setup hero, and live identity, network, and key-custody states appear in dedicated summary cards. When a wallet or browser side panel narrows the page, the navigation moves into a dedicated second row before any control can compress or clip. After a DID loads, temporary Technocore outages now trigger four bounded connection attempts before the interface asks the owner to retry later. Every existing tool and security boundary remains intact.
 
 The visual system combines rounded translucent panels, generous spacing, green atmospheric glow, subtle technical grids, and the moving Matrix code-rain background. Pixel-style typography is reserved for system labels, proof identifiers, buttons, counters, and status text. Longer instructions, public messages, DIDs, transcripts, receipts, and planning fields use a readable modern interface font. Motion becomes static when the browser requests reduced motion, and the DID room filter retains visible checked, unchecked, hover, and keyboard-focus states.
 
@@ -169,7 +169,7 @@ npm test
 npm run build
 ```
 
-The current release includes 43 automated checks covering cryptographic compatibility, identity authorization, the owner-only Control Chamber, exact room readback, sharded public DID notes, wrapped note confirmation, model request validation, development inference metering, testnet spend planning, owner-bound session drafts, draft unlock arithmetic, transcript handling, proof receipts, Proof Lab role separation, room watching, the readable Matrix Pixel Console, accessible DID filtering, reduced motion, rendered interface rules, and public branding.
+The current release includes 44 automated checks covering cryptographic compatibility, identity authorization, bounded connection recovery, the owner-only Control Chamber, exact room readback, sharded public DID notes, wrapped note confirmation, model request validation, development inference metering, testnet spend planning, owner-bound session drafts, draft unlock arithmetic, transcript handling, proof receipts, Proof Lab role separation, room watching, the readable Matrix Command Center, accessible DID filtering, reduced motion, rendered interface rules, and public branding.
 
 ## Project structure
 

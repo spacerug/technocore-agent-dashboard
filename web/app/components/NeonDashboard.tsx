@@ -95,6 +95,10 @@ function fileFromEvent(event: ChangeEvent<HTMLInputElement>): File | null {
   return event.target.files?.[0] ?? null;
 }
 
+function pause(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 export default function NeonDashboard() {
   const [tab, setTab] = useState<Tab>("identity");
   const [identity, setIdentity] = useState<BrowserIdentity | null>(null);
@@ -184,7 +188,7 @@ export default function NeonDashboard() {
       setLastCheckIn(previousCheckIn);
       setWeeklyDue(!previousCheckIn || Date.now() - new Date(previousCheckIn).getTime() >= 7 * 24 * 60 * 60 * 1000);
     });
-    if (loaded) await checkHealth(true);
+    if (loaded) await connectAfterIdentityLoad();
   }
 
   async function makeIdentity() {
@@ -205,10 +209,13 @@ export default function NeonDashboard() {
     setNotice({ tone: "good", text: "Private identity backup downloaded. Keep it off GitHub, X, Discord, and public cloud folders." });
   }
 
-  async function checkHealth(afterIdentityLoad = false) {
+  async function checkHealth(afterIdentityLoad = false, retry?: { attempt: number; total: number }): Promise<boolean> {
     setService("checking");
-    setServiceDetail("Checking…");
-    const result = await run("Checking Technocore…", async () => apiJson("/api/technocore?action=health"), (payload) => {
+    setServiceDetail(retry ? `Attempt ${retry.attempt} of ${retry.total}` : "Checking...");
+    setBusy(retry ? `Connecting to Technocore, attempt ${retry.attempt} of ${retry.total}...` : "Checking Technocore...");
+    setNotice(null);
+    try {
+      const payload = await apiJson("/api/technocore?action=health");
       setService("online");
       setServiceDetail(String(payload.status ?? "OK"));
       setNotice({
@@ -217,13 +224,38 @@ export default function NeonDashboard() {
           ? "Identity loaded safely and Technocore connected. Your DID is ready to sign."
           : "Technocore answered. Public reads and signed sends are available right now.",
       });
-    });
-    if (!result) {
+      return true;
+    } catch (error) {
+      const detail = formatError(error);
       setService("offline");
-      setServiceDetail("Unavailable");
+      setServiceDetail(/503|unavailable|timed out/i.test(detail) ? "Service busy" : "Connection failed");
       if (afterIdentityLoad) {
-        setNotice({ tone: "warn", text: "Your identity loaded safely, but Technocore did not answer. Click Retry connection when the service is available." });
+        setNotice({
+          tone: "warn",
+          text: retry && retry.attempt < retry.total
+            ? `Your identity loaded safely, but Technocore did not answer. Automatic retry ${retry.attempt + 1} of ${retry.total} will run shortly.`
+            : "Your identity loaded safely, but Technocore is temporarily unavailable. You do not need to reload the DID. Use Connect when the service recovers.",
+        });
+      } else {
+        setNotice({ tone: "warn", text: `Technocore is temporarily unavailable. ${detail}` });
       }
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function connectAfterIdentityLoad() {
+    const delays = [0, 2_500, 6_000, 12_000];
+    for (let index = 0; index < delays.length; index += 1) {
+      if (delays[index] > 0) {
+        setService("checking");
+        setServiceDetail(`Retry ${index + 1} of ${delays.length} queued`);
+        setBusy(`Technocore is busy. Retrying automatically in ${Math.ceil(delays[index] / 1_000)} seconds...`);
+        await pause(delays[index]);
+        setBusy("");
+      }
+      if (await checkHealth(true, { attempt: index + 1, total: delays.length })) return;
     }
   }
 
@@ -662,7 +694,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.7.1 · RESPONSIVE MATRIX HEADER</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
+      <footer><span>NEONCORE · WEB 2.7.2 · CONNECTION RECOVERY</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
     </main>
   );
 }
