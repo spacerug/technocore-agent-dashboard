@@ -9,13 +9,15 @@ experimental Proof of Useful Inference workflow for signed task requests,
 worker claims, sealed result commitments, public reveals, independent
 validation, and portable work receipts.
 
-Version 2.6.0 includes FLOP Testnet Mission Control inside the NEONCORE Matrix Pixel Console. Headings,
-navigation, buttons, labels, counters, and system states use a retro game style,
-while longer instructions, DIDs, public messages, transcripts, and receipts use
-a larger high-contrast monospace treatment. A lightweight animated code-rain
-canvas stays behind a dark readability veil and becomes static when reduced
-motion is preferred. The DID room filter uses a dedicated visible pixel toggle.
-The interface uses no external font service and preserves existing behavior.
+Version 2.7.0 introduces the NEONCORE Matrix Command Center. A spacious top
+navigation replaces the permanent sidebar, and the local identity screen now
+uses a focused landing hero with live identity, network, and key-custody cards.
+Rounded glass surfaces, stronger spacing, and a clear modern interface font make
+every tool easier to scan. Pixel typography remains on system labels, buttons,
+proof identifiers, and status text. The animated code-rain canvas stays behind
+a dark readability veil and becomes static when reduced motion is preferred.
+All identity, messaging, Control Chamber, testnet, Proof Lab, artifact, memory,
+receipt, and security behavior is preserved.
 
 The NEONCORE Control Chamber adds optional bounded conversation. It clearly
 separates public conversation from private operation. Anyone can address

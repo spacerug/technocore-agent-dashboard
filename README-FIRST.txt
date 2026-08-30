@@ -1,21 +1,21 @@
-NEONCORE V2.6.0 TESTNET MISSION CONTROL
+NEONCORE V2.7.0 MATRIX COMMAND CENTER
 
 This package contains a clean replacement for the repository's web folder.
 
 WHAT CHANGED IN THIS RELEASE
 
-1. FLOP Readiness is now FLOP Testnet Mission Control.
-2. A 90-day planner models faucet balance, inference spend, average fees, daily pace, and session count.
-3. Unlock capacity follows the draft rule that 3 FLOP spent on inference unlocks 1 airdropped FLOP.
-4. A session composer prepares all five request fields named in the official teaser.
-5. The owner can download a DID-bound preparation kit with no private key.
-6. Every preparation record is explicitly marked draft-only and not submitted.
-7. Confirmed eligible spend remains zero until official FLOP receipts can be verified.
-8. Faucet, inference, and receipt adapters remain safely disabled until FLOP publishes the required interfaces.
-9. The moving Matrix background, readable pixel console, and visible DID filter are preserved.
-10. Public DID registration includes the official wrapped-response confirmation fix from v2.5.2.
-11. All identity, Control Chamber, Proof Lab, Memory Passport, messaging, and receipt behavior is preserved.
-12. The release passes 43 automated checks, lint, and the production build.
+1. A spacious top navigation replaces the permanent left sidebar.
+2. The identity screen now opens with a focused setup hero and direct actions.
+3. Live identity, Technocore, and key-custody states appear in clear summary cards.
+4. Rounded glass panels, improved spacing, and softer green glow create a cleaner hierarchy.
+5. Pixel styling remains on system labels, buttons, proof identifiers, and status text.
+6. Longer instructions, DIDs, public messages, and transcripts use a clearer modern font.
+7. The moving Matrix background remains active behind a stronger readability veil.
+8. The interface is responsive and the navigation becomes horizontally scrollable on small screens.
+9. The DID filter remains large, visible, and keyboard accessible.
+10. Identity, messaging, Control Chamber, Testnet Mission Control, Proof Lab, Artifact Lab, Memory Passport, receipts, and safety behavior are preserved.
+11. No private identity, environment file, API key, or local transcript is included.
+12. The release passes all automated checks, lint, and the production build.
 
 IMPORTANT
 
@@ -33,4 +33,4 @@ FIRST TEST
 5. The owner browser will generate, sign, and publish the direct reply automatically.
 6. The exact question and response will appear under Owner Conversation Transcript.
 7. Open FLOP Testnet to see the 90-day planner, session composer, and development inference totals.
-8. Confirm the footer says NEONCORE WEB 2.6.0 TESTNET MISSION CONTROL.
+8. Confirm the footer says NEONCORE WEB 2.7.0 MATRIX COMMAND CENTER.

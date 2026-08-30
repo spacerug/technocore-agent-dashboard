@@ -458,54 +458,69 @@ export default function NeonDashboard() {
     <main className="app-shell">
       <MatrixRain />
       <header className="topbar">
-        <button className="brand" onClick={() => setTab("identity")} aria-label="Open identity page">
-          <span className="brand-mark">NC</span>
-          <span><strong>NEONCORE</strong><small>SOVEREIGN AGENT CONSOLE</small></span>
-        </button>
-        <div className="top-actions">
-          <div className={`service-pill ${service}`}><span /> Technocore: {serviceDetail}</div>
-          <button className="button compact" onClick={() => void checkHealth()} disabled={!identity || Boolean(busy)}>{!identity ? "Load identity first" : service === "checking" ? "Connecting" : service === "online" ? "Check again" : "Retry connection"}</button>
+        <div className="topbar-inner">
+          <button className="brand" onClick={() => setTab("identity")} aria-label="Open identity page">
+            <span className="brand-mark"><i />NC</span>
+            <span><strong>NEONCORE</strong><small>SOVEREIGN AGENT NETWORK</small></span>
+          </button>
+          <nav className="primary-nav" aria-label="NEONCORE tools">
+            {NAV.map((item) => (
+              <button
+                key={item.id}
+                className={tab === item.id ? "active" : ""}
+                onClick={() => setTab(item.id)}
+                title={item.note}
+                aria-current={tab === item.id ? "page" : undefined}
+              >
+                <span>{item.number}</span>{item.label}
+              </button>
+            ))}
+          </nav>
+          <div className="top-actions">
+            <div className={`service-pill ${service}`}><span /> {service === "online" ? "Network online" : service === "checking" ? "Connecting" : service === "offline" ? "Network offline" : "Network unchecked"}</div>
+            <button className="button compact header-action" onClick={() => identity ? void checkHealth() : setTab("identity")} disabled={Boolean(busy)}>{!identity ? "Open identity" : service === "checking" ? "Connecting" : service === "online" ? "Recheck" : "Connect"}</button>
+          </div>
         </div>
       </header>
 
       <div className="workspace">
-        <aside className="sidebar">
-          <div className="identity-mini">
-            <p>ACTIVE DID</p>
-            <strong>{identityLabel}</strong>
-            <span className={identityReady ? "ready" : "waiting"}>{identityReady ? "● LOCAL KEY READY" : "○ KEY REQUIRED"}</span>
-          </div>
-          <nav aria-label="Dashboard sections">
-            {NAV.map((item) => (
-              <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>
-                <span>{item.number}</span><strong>{item.label}</strong><small>{item.note}</small>
-              </button>
-            ))}
-          </nav>
-          <div className="local-only"><strong>LOCAL CRYPTO</strong><p>Secret files are processed in this browser tab, not uploaded to the host.</p></div>
-        </aside>
-
         <div className="content">
           {busy && <div className="busy-bar"><span /> {busy}</div>}
           {notice && <div className={`notice ${notice.tone}`} role="status"><span>{notice.tone === "good" ? "✓" : notice.tone === "warn" ? "!" : "×"}</span>{notice.text}<button onClick={() => setNotice(null)}>Dismiss</button></div>}
 
           {tab === "identity" && (
             <div className="page-grid identity-page">
+              <section className="identity-hero wide">
+                <div className="identity-hero-copy">
+                  <p className="eyebrow"><span /> TECHNOCORE · LOCAL-FIRST IDENTITY</p>
+                  <h1>Your agent has a DID.<br /><em>Give it a secure command center.</em></h1>
+                  <p>Load an existing identity or create a new one, then sign messages, prove useful work, protect memory, and operate NEONCORE from one sovereign interface.</p>
+                  <input ref={identityInput} type="file" accept=".json,application/json" hidden onChange={(event) => { const file = fileFromEvent(event); if (file) void loadIdentity(file); event.target.value = ""; }} />
+                  <div className="hero-actions">
+                    <button className="button primary hero-primary" onClick={() => identityInput.current?.click()}>Load identity JSON</button>
+                    <button className="button" onClick={makeIdentity}>Create new DID</button>
+                  </div>
+                  <p className="hero-assurance"><span>✓</span> Private keys stay inside this browser session.</p>
+                </div>
+                <div className="core-visual" aria-hidden="true">
+                  <div className="core-halo halo-one" />
+                  <div className="core-halo halo-two" />
+                  <div className="core-center"><small>LOCAL</small><strong>NC</strong><span>CORE</span></div>
+                  <b className="core-node node-one">SIGN</b>
+                  <b className="core-node node-two">VERIFY</b>
+                  <b className="core-node node-three">PROVE</b>
+                </div>
+              </section>
+              <section className="network-metrics wide" aria-label="Current session status">
+                <article><span>ACTIVE IDENTITY</span><strong>{identity ? identityLabel : "Not loaded"}</strong><small className={identityReady ? "good" : "waiting"}>{identityReady ? "LOCAL KEY READY" : "IDENTITY REQUIRED"}</small></article>
+                <article><span>TECHNOCORE</span><strong>{service === "online" ? "Connected" : service === "checking" ? "Checking" : "Not connected"}</strong><small className={service === "online" ? "good" : "waiting"}>{serviceDetail}</small></article>
+                <article><span>KEY CUSTODY</span><strong>Browser local</strong><small className="good">NO SECRET UPLOAD</small></article>
+              </section>
               <section className="setup-path wide" aria-label="Required setup steps">
                 <article className={identityReady ? "complete" : "current"}><span>1</span><div><strong>Load your identity JSON</strong><small>{identityReady ? "DID VERIFIED LOCALLY" : "THIS MUST BE DONE FIRST"}</small></div></article>
                 <div className="setup-arrow">›</div>
                 <article className={service === "online" ? "complete" : identityReady ? "current" : "waiting"}><span>2</span><div><strong>Connect to Technocore</strong><small>{service === "online" ? "CONNECTION READY" : identityReady ? "CHECKING AUTOMATICALLY" : "STARTS AFTER IDENTITY"}</small></div></article>
               </section>
-              <div className="page-heading"><p className="eyebrow">STEP 01 / LOCAL IDENTITY</p><h1>Bring your agent identity into the browser, without uploading it.</h1><p>The file is read locally, matched against its public DID, and kept only in temporary browser memory. Refreshing the page clears it.</p></div>
-              <Panel eyebrow="STEP 1 / REQUIRED" title="Load your existing DID first" className="feature-panel">
-                <p>Choose the same <code>flop_agent_identity.json</code> used by your Windows dashboard. After it is verified locally, NEONCORE automatically checks the Technocore connection.</p>
-                <input ref={identityInput} type="file" accept=".json,application/json" hidden onChange={(event) => { const file = fileFromEvent(event); if (file) void loadIdentity(file); event.target.value = ""; }} />
-                <button className="button primary" onClick={() => identityInput.current?.click()}>Choose identity JSON</button>
-              </Panel>
-              <Panel eyebrow="NEW USER" title="Create a new browser identity">
-                <p>This produces a different DID. Existing users should load their original file instead.</p>
-                <button className="button" onClick={makeIdentity}>Generate new DID locally</button>
-              </Panel>
               <Panel eyebrow="CURRENT SESSION" title={identity ? "Identity verified" : "Waiting for an identity"} className="wide">
                 {identity ? <>
                   <div className="did-block"><span>PUBLIC DID</span><code>{identity.did}</code></div>
@@ -647,7 +662,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.6.0 · TESTNET MISSION CONTROL</span><span>THE SOVEREIGN OPERATING SYSTEM FOR DIGITAL AGENTS</span></footer>
+      <footer><span>NEONCORE · WEB 2.7.0 · MATRIX COMMAND CENTER</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
     </main>
   );
 }

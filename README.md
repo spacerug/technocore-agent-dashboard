@@ -2,7 +2,7 @@
 
 **A sovereign agent console for signed identity, portable memory, verifiable work, and bounded public autonomy.**
 
-[![Version](https://img.shields.io/badge/version-2.6.0-20e878)](https://neoncore.space)
+[![Version](https://img.shields.io/badge/version-2.7.0-20e878)](https://neoncore.space)
 [![Tests](https://img.shields.io/badge/automated_tests-43_passing-20e878)](web/tests)
 [![License](https://img.shields.io/badge/license-MIT-20e878)](LICENSE)
 [![Live](https://img.shields.io/badge/live-neoncore.space-20e878)](https://neoncore.space)
@@ -32,7 +32,7 @@ The project includes a Windows desktop dashboard and a browser application. Priv
 | Conversation transcript | Records the exact incoming message, NEONCORE response, sender DID, room, time, and proof ID in the owner's browser. |
 | Development inference meter | Records provider-reported input, output, and total token use for owner-authorized NEONCORE replies while clearly labeling it as off-network development activity. |
 | FLOP Testnet Mission Control | Plans a 90-day faucet budget, prepares the five announced inference-session fields, exports an owner-bound preparation kit, and keeps confirmed spend at zero until official receipts can be verified. |
-| Pixel Console interface | Uses readable monospace text, pixel-style display typography, tiled surfaces, hard-edged controls, and game-inspired status displays without reducing legibility. |
+| Matrix Command Center | Uses a spacious top navigation, focused landing hero, clear live status cards, rounded glass surfaces, and pixel-style system labels without reducing legibility. |
 | Matrix background | Renders lightweight moving code rain behind a dark readability veil and displays a static frame when reduced motion is preferred. |
 | Artifact provenance | Signs artwork fingerprints and creates portable certificates that verify the creator DID and exact file. |
 | Agent Memory Passport | Encrypts private agent memory locally and creates a signed public profile for safe transfer between sessions or devices. |
@@ -56,7 +56,7 @@ Proof Lab uses a dedicated public room for each experiment. This keeps task clai
 
 The FLOP teaser draft says the agent allocation will be based largely on what agents spend on inference during the planned Q4 2026 testnet. Agents are expected to claim test tokens from a faucet and use them to buy inference. The draft also states that every 3 FLOP spent on inference unlocks 1 airdropped FLOP.
 
-NEONCORE v2.6.0 reflects that distinction directly:
+NEONCORE v2.7.0 reflects that distinction directly:
 
 - The Control Chamber meters provider-reported model calls and token usage.
 - Current model activity is labeled `off_network_development` and never presented as FLOP testnet credit.
@@ -70,11 +70,11 @@ NEONCORE v2.6.0 reflects that distinction directly:
 
 The teaser is draft v0.1 and its figures are provisional. [Read official Section 04](https://flop.finance/teaser/#04-testnet-and-airdrop).
 
-## Pixel Console interface
+## Matrix Command Center interface
 
-Version 2.6.0 preserves the cohesive Matrix Pixel Console interface while adding FLOP Testnet Mission Control. Pixel-style typography is concentrated in headings, navigation, buttons, labels, counters, and system states. Longer instructions, public messages, DIDs, transcripts, receipts, and planning fields use a larger high-contrast monospace treatment.
+Version 2.7.0 rebuilds the interface around a modern command-center layout. A compact top navigation keeps all nine systems visible, the identity landing screen now leads with a focused setup hero, and live identity, network, and key-custody states appear in dedicated summary cards. Every existing tool and security boundary remains intact.
 
-The visual system includes an 8-pixel grid, subtle scanlines, tiled console surfaces, crisp borders, hard shadows, square status lights, pressable game-like controls, visible keyboard focus states, and responsive mobile layouts. A moving Matrix-style code-rain canvas sits behind a dark readability veil and becomes static when the browser requests reduced motion. The DID room filter uses a dedicated 28-pixel toggle with distinct checked, unchecked, hover, and keyboard-focus states. The interface uses no external font service and preserves the existing application structure and behavior.
+The visual system combines rounded translucent panels, generous spacing, green atmospheric glow, subtle technical grids, and the moving Matrix code-rain background. Pixel-style typography is reserved for system labels, proof identifiers, buttons, counters, and status text. Longer instructions, public messages, DIDs, transcripts, receipts, and planning fields use a readable modern interface font. Motion becomes static when the browser requests reduced motion, and the DID room filter retains visible checked, unchecked, hover, and keyboard-focus states.
 
 ## Security model
 

@@ -53,16 +53,21 @@ test("prepares FLOP testnet activity without claiming development spend", () => 
   assert.match(agent, /Measured model use, not FLOP testnet spend/);
 });
 
-test("uses the readable NEONCORE pixel console visual system", () => {
+test("uses the readable NEONCORE Matrix Command Center visual system", () => {
   const css = readFileSync("app/globals.css", "utf8");
   const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
   assert.match(css, /NEONCORE PIXEL CONSOLE/);
+  assert.match(css, /NEONCORE MATRIX COMMAND CENTER/);
   assert.match(css, /--pixel-font:/);
   assert.match(css, /--read-font:/);
+  assert.match(css, /--ui-font:/);
   assert.match(css, /repeating-linear-gradient\(180deg/);
-  assert.match(css, /text-shadow: 3px 3px 0/);
+  assert.match(css, /\.identity-hero/);
+  assert.match(css, /\.primary-nav/);
   assert.match(css, /focus-visible/);
-  assert.match(dashboard, /WEB 2\.6\.0 · TESTNET MISSION CONTROL/);
+  assert.match(dashboard, /WEB 2\.7\.0 · MATRIX COMMAND CENTER/);
+  assert.match(dashboard, /Your agent has a DID/);
+  assert.match(dashboard, /Current session status/);
 });
 
 test("renders accessible DID filtering above a motion-safe Matrix background", () => {
@@ -71,7 +76,7 @@ test("renders accessible DID filtering above a motion-safe Matrix background", (
   const css = readFileSync("app/globals.css", "utf8");
   assert.match(dashboard, /className="check pixel-check"/);
   assert.match(dashboard, /className="pixel-check-box"/);
-  assert.match(dashboard, /WEB 2\.6\.0 · TESTNET MISSION CONTROL/);
+  assert.match(dashboard, /WEB 2\.7\.0 · MATRIX COMMAND CENTER/);
   assert.match(matrix, /prefers-reduced-motion: reduce/);
   assert.match(matrix, /aria-hidden="true"/);
   assert.match(css, /\.matrix-rain/);
