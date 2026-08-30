@@ -1103,13 +1103,27 @@ footer {
 @keyframes core-spin { to { transform: rotate(360deg); } }
 @keyframes core-spin-reverse { to { transform: rotate(-360deg); } }
 
-@media (max-width: 1220px) {
+@media (max-width: 1680px) {
   .topbar { height: auto; padding-block: 12px; }
-  .topbar-inner { display: grid; grid-template-columns: auto 1fr auto; }
-  .primary-nav { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; width: 100%; overflow-x: auto; padding: 4px 0 0; scrollbar-width: none; }
+  .topbar-inner { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 8px; }
+  .primary-nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: center;
+    width: 100%;
+    overflow-x: auto;
+    margin: 0;
+    padding: 8px 0 0;
+    border-top: 1px solid rgba(124, 255, 155, .08);
+    scrollbar-width: none;
+  }
   .primary-nav::-webkit-scrollbar { display: none; }
   .primary-nav button { flex: 0 0 auto; }
   .workspace { min-height: calc(100vh - 160px); }
+}
+
+@media (max-width: 1180px) {
+  .primary-nav { justify-content: flex-start; }
 }
 
 @media (max-width: 900px) {

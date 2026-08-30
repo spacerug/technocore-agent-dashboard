@@ -662,7 +662,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.7.0 · MATRIX COMMAND CENTER</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
+      <footer><span>NEONCORE · WEB 2.7.1 · RESPONSIVE MATRIX HEADER</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
     </main>
   );
 }

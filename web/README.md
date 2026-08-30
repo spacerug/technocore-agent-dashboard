@@ -9,13 +9,15 @@ experimental Proof of Useful Inference workflow for signed task requests,
 worker claims, sealed result commitments, public reveals, independent
 validation, and portable work receipts.
 
-Version 2.7.0 introduces the NEONCORE Matrix Command Center. A spacious top
+Version 2.7.1 introduces the NEONCORE Matrix Command Center. A spacious top
 navigation replaces the permanent sidebar, and the local identity screen now
 uses a focused landing hero with live identity, network, and key-custody cards.
 Rounded glass surfaces, stronger spacing, and a clear modern interface font make
 every tool easier to scan. Pixel typography remains on system labels, buttons,
 proof identifiers, and status text. The animated code-rain canvas stays behind
 a dark readability veil and becomes static when reduced motion is preferred.
+When MetaMask or another browser side panel narrows the page, the tool navigation
+moves into a dedicated second row before any header control can compress or clip.
 All identity, messaging, Control Chamber, testnet, Proof Lab, artifact, memory,
 receipt, and security behavior is preserved.
 
