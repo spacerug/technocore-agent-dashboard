@@ -26,6 +26,7 @@ type RoomMessage = { seq?: number; ts?: string; from?: string; nonce?: number | 
 type Notice = { tone: "good" | "warn" | "bad"; text: string };
 type PublicReceipt = { posted: { seq?: number }; room: string; proof_id: string };
 type ModelUsage = Omit<DevelopmentInferenceUsage, "id" | "generated_at_utc">;
+type RelayPayload = { ok?: boolean; reply?: string; usage?: ModelUsage; error?: string; quality_rejected?: boolean };
 
 type Props = {
   identity: BrowserIdentity | null;
@@ -38,6 +39,18 @@ type Props = {
 };
 
 const DID_RE = /^did:key:z[1-9A-HJ-NP-Za-km-z]{40,100}$/;
+const PER_SENDER_COOLDOWN_MS = 15 * 60_000;
+const HOURLY_REPLY_LIMIT = 8;
+const DAILY_REPLY_LIMIT = 24;
+const MAX_PENDING_TRIGGERS = 5;
+const RECOVERY_DELAYS_MS = [12_000, 24_000, 48_000, 60_000];
+
+class QualityRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "QualityRejectedError";
+  }
+}
 
 function keyFor(message: RoomMessage): string {
   return `${String(message.seq ?? "")}|${String(message.nonce ?? "")}|${String(message.from ?? "")}|${String(message.text ?? "")}`;
@@ -59,11 +72,20 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
   const [activity, setActivity] = useState<string[]>([]);
   const [conversations, setConversations] = useState<LiveAgentTranscriptEntry[]>([]);
   const [replyCount, setReplyCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [ignoredCount, setIgnoredCount] = useState(0);
+  const [withheldCount, setWithheldCount] = useState(0);
+  const [reliabilityState, setReliabilityState] = useState<"ready" | "recovering">("ready");
   const [developmentActivity, setDevelopmentActivity] = useState<DevelopmentInferenceUsage[]>([]);
   const seen = useRef(new Set<string>());
+  const pendingTriggers = useRef<RoomMessage[]>([]);
   const inFlight = useRef(false);
   const stopAt = useRef(0);
   const lastReplyAt = useRef(0);
+  const senderReplyAt = useRef(new Map<string, number>());
+  const recentReplyTimes = useRef<number[]>([]);
+  const recoveryFailures = useRef(0);
+  const nextPollAt = useRef(0);
   const replyCountRef = useRef(0);
   const runningRef = useRef(false);
   const settingsRef = useRef({ room, persona, mode, cooldown, maxReplies });
@@ -159,21 +181,74 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
       body: JSON.stringify(body),
       cache: "no-store",
     });
-    const payload = await response.json() as { ok?: boolean; reply?: string; usage?: ModelUsage; error?: string };
-    if (!response.ok || !payload.ok || !payload.reply) throw new Error(payload.error || "The private model relay did not answer.");
+    const payload = await response.json() as RelayPayload;
     const usage = payload.usage;
+    if (!response.ok || !payload.ok || !payload.reply) {
+      if (usage && usage.scope === "off_network_development") recordDevelopmentInference(usage);
+      if (payload.quality_rejected) throw new QualityRejectedError(payload.error || "Quality gate withheld the generated reply.");
+      throw new Error(payload.error || "The private model relay did not answer.");
+    }
     if (!usage || usage.scope !== "off_network_development") throw new Error("The model relay did not return a usable development inference meter.");
     return { reply: cleanText(payload.reply, 600), usage };
+  }
+
+  function isTransientConnectionError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    return /Technocore|HTTP 50[234]|timed out|unavailable|network|fetch failed|service busy/i.test(message);
+  }
+
+  function restoreSafetyHistory(activeIdentity: BrowserIdentity, activeRoom: string) {
+    let stored: LiveAgentTranscriptEntry[] = [];
+    try {
+      stored = parseLiveAgentTranscript(window.localStorage.getItem(liveAgentTranscriptKey(activeIdentity.did, activeRoom)));
+    } catch {}
+    const now = Date.now();
+    const senders = new Map<string, number>();
+    const hourly: number[] = [];
+    for (const entry of stored) {
+      const respondedAt = Date.parse(entry.responded_at);
+      if (!Number.isFinite(respondedAt)) continue;
+      if (now - respondedAt <= 60 * 60_000) hourly.push(respondedAt);
+      const previous = senders.get(entry.sender_did) ?? 0;
+      if (respondedAt > previous) senders.set(entry.sender_did, respondedAt);
+    }
+    setConversations(stored);
+    senderReplyAt.current = senders;
+    recentReplyTimes.current = hourly;
+    return stored.filter((entry) => {
+      const timestamp = Date.parse(entry.responded_at);
+      return Number.isFinite(timestamp) && now - timestamp <= 24 * 60 * 60_000;
+    }).length;
+  }
+
+  function queueTrigger(message: RoomMessage) {
+    const messageKey = keyFor(message);
+    if (pendingTriggers.current.some((candidate) => keyFor(candidate) === messageKey)) return;
+    pendingTriggers.current.push(message);
+    if (pendingTriggers.current.length > MAX_PENDING_TRIGGERS) {
+      const dropped = pendingTriggers.current.shift();
+      setIgnoredCount((count) => count + 1);
+      log(`Queue full. The oldest pending message from ${String(dropped?.from ?? "unknown").slice(0, 24)}... was not answered.`);
+    }
+    setPendingCount(pendingTriggers.current.length);
   }
 
   async function pollOnce() {
     if (!runningRef.current || inFlight.current) return;
     if (Date.now() >= stopAt.current) return stop("Session time limit reached.");
     if (replyCountRef.current >= settingsRef.current.maxReplies) return stop("Session reply limit reached.");
-    if (Date.now() - lastReplyAt.current < settingsRef.current.cooldown * 1000) return;
+    if (Date.now() < nextPollAt.current) return;
     inFlight.current = true;
+    let operation: "read" | "model" | "publish" = "read";
+    let trigger: RoomMessage | undefined;
     try {
       const messages = await readRef.current(settingsRef.current.room);
+      if (recoveryFailures.current > 0) {
+        log(`Technocore connection recovered after ${recoveryFailures.current} failed room check(s).`);
+        recoveryFailures.current = 0;
+        nextPollAt.current = 0;
+        setReliabilityState("ready");
+      }
       const unseen = messages.filter((message) => {
         const key = keyFor(message);
         return !seen.current.has(key)
@@ -182,8 +257,36 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
           && isAddressedToLiveAgent(message.text, identityRef.current?.did);
       });
       messages.forEach((message) => seen.current.add(keyFor(message)));
-      const trigger = unseen.at(-1);
+      unseen.forEach(queueTrigger);
+      if (unseen.length > 0) log(`${unseen.length} addressed message(s) entered the bounded reply queue.`);
+      if (Date.now() - lastReplyAt.current < settingsRef.current.cooldown * 1000) return;
+
+      const now = Date.now();
+      recentReplyTimes.current = recentReplyTimes.current.filter((timestamp) => now - timestamp <= 60 * 60_000);
+      if (recentReplyTimes.current.length >= HOURLY_REPLY_LIMIT) return stop("Hourly quality limit reached. Activate a new session after the rolling hour clears.");
+
+      while (pendingTriggers.current.length > 0 && !trigger) {
+        const candidate = pendingTriggers.current.shift();
+        if (!candidate) break;
+        const sender = String(candidate.from ?? "");
+        const previousReply = senderReplyAt.current.get(sender) ?? 0;
+        if (now - previousReply < PER_SENDER_COOLDOWN_MS) {
+          setIgnoredCount((count) => count + 1);
+          log(`Ignored an addressed message from ${sender.slice(0, 24)}... because that DID is inside the 15 minute safety cooldown.`);
+          continue;
+        }
+        trigger = candidate;
+      }
+      setPendingCount(pendingTriggers.current.length);
       if (!trigger) return;
+
+      const dailyCount = identityRef.current ? restoreSafetyHistory(identityRef.current, settingsRef.current.room) : 0;
+      if (dailyCount >= DAILY_REPLY_LIMIT) {
+        queueTrigger(trigger);
+        return stop("Daily quality limit reached. No additional replies will be published in this room today.");
+      }
+
+      operation = "model";
       setWorking("Generating one bounded reply");
       log(`New signed message addressed to NEONCORE from ${String(trigger.from).slice(0, 24)}...`);
       const generated = await generateReply(trigger, messages);
@@ -197,17 +300,43 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
         onNotice({ tone: "good", text: "NEONCORE prepared a reply. Review it before publishing." });
         return;
       }
+      operation = "publish";
       setWorking("Signing and publishing one reply");
       const receipt = await publishRef.current(settingsRef.current.room, reply);
       rememberConversation(trigger, reply, receipt, generated.usage);
       lastReplyAt.current = Date.now();
+      senderReplyAt.current.set(String(trigger.from ?? ""), lastReplyAt.current);
+      recentReplyTimes.current.push(lastReplyAt.current);
       replyCountRef.current += 1;
       setReplyCount(replyCountRef.current);
       log(`Reply ${replyCountRef.current} confirmed as ${receipt.proof_id.slice(0, 24)}...`);
       if (replyCountRef.current >= settingsRef.current.maxReplies) stop("Session reply limit reached.");
     } catch (error) {
-      stop(`Stopped after an error: ${error instanceof Error ? error.message : "Unknown error"}`);
-      onNotice({ tone: "bad", text: error instanceof Error ? error.message : "The Control Chamber stopped after an error." });
+      const message = error instanceof Error ? error.message : "Unknown error";
+      if (error instanceof QualityRejectedError) {
+        setWithheldCount((count) => count + 1);
+        log(message);
+        onNotice({ tone: "warn", text: `${message} Nothing was signed or published.` });
+      } else if ((operation === "read" || operation === "model") && isTransientConnectionError(error)) {
+        if (trigger) {
+          pendingTriggers.current.unshift(trigger);
+          setPendingCount(pendingTriggers.current.length);
+        }
+        recoveryFailures.current += 1;
+        const delay = RECOVERY_DELAYS_MS[Math.min(recoveryFailures.current - 1, RECOVERY_DELAYS_MS.length - 1)];
+        nextPollAt.current = Date.now() + delay;
+        setReliabilityState("recovering");
+        log(`Temporary ${operation === "read" ? "room" : "model relay"} failure. Recovery check scheduled in ${Math.ceil(delay / 1_000)} seconds.`);
+        if (recoveryFailures.current === 1) onNotice({ tone: "warn", text: "A temporary service failure was detected. NEONCORE remains active and will retry automatically." });
+      } else {
+        if (operation === "publish") {
+          stop(`Publishing paused safely: ${message}`);
+          onNotice({ tone: "bad", text: `${message} The session stopped to prevent an uncertain duplicate. Check the official room before trying again.` });
+        } else {
+          stop(`Stopped after an error: ${message}`);
+          onNotice({ tone: "bad", text: message });
+        }
+      }
     } finally {
       inFlight.current = false;
       setWorking("");
@@ -230,16 +359,25 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
     try {
       const messages = await readRoomMessages(safeRoom);
       seen.current = new Set(messages.map(keyFor));
+      pendingTriggers.current = [];
+      setPendingCount(0);
       replyCountRef.current = 0;
       setReplyCount(0);
       setDraft("");
       setDraftTrigger(null);
       setDraftUsage(null);
       lastReplyAt.current = 0;
+      recoveryFailures.current = 0;
+      nextPollAt.current = 0;
+      setIgnoredCount(0);
+      setWithheldCount(0);
+      setReliabilityState("ready");
+      const dailyCount = restoreSafetyHistory(identity, safeRoom);
+      if (dailyCount >= DAILY_REPLY_LIMIT) throw new Error("The 24 reply daily quality limit is already reached for this room.");
       stopAt.current = Date.now() + Math.max(5, Math.min(sessionMinutes, 60)) * 60_000;
       runningRef.current = true;
       setRunning(true);
-      log(`Session started in ${safeRoom}. Existing messages were marked as read. Only messages addressing NEONCORE will trigger a reply.`);
+      log(`Session started in ${safeRoom}. Existing messages were marked as read. The quality gate, bounded queue, and automatic recovery are active.`);
       onNotice({ tone: "good", text: "NEONCORE is active and watching for the next signed message addressed to it. Keep this page open." });
     } catch (error) {
       onNotice({ tone: "bad", text: error instanceof Error ? error.message : "The room could not be loaded." });
@@ -341,16 +479,18 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
       <div className="status-line good">The official main chat is <code>{TECHNOCORE_MAIN_ROOM}</code>. <a href={TECHNOCORE_MAIN_ROOM_URL} target="_blank" rel="noreferrer">View official lobby</a></div>
       <div className="two-col"><label className="field"><span>Technocore room</span><input value={room} disabled={running} onChange={(event) => setRoom(event.target.value)} /></label><label className="field"><span>Mode</span><select value={mode} disabled={running} onChange={(event) => setMode(event.target.value as "review" | "auto")}><option value="auto">Auto respond, owner controlled</option><option value="review">Review every reply before publishing</option></select></label></div>
       <div className="status-line muted">Trigger policy: a new signed message must contain NEONCORE, neoncore.space, or the owner DID. Unrelated room chatter is ignored.</div>
+      <div className="status-line good">Quality firewall: replies must address the sender&apos;s subject, add useful substance, avoid generic question loops, and remain distinct from recent responses.</div>
+      <div className="status-line muted">Reliability limits: 5 queued messages, 15 minutes per sender, 8 replies per rolling hour, and 24 replies per room per day.</div>
       <label className="field"><span>Agent persona</span><textarea rows={4} value={persona} disabled={running} onChange={(event) => setPersona(event.target.value)} /></label>
       <div className="proof-number-grid"><label className="field"><span>Cooldown, seconds</span><input type="number" min="60" max="600" value={cooldown} disabled={running} onChange={(event) => setCooldown(Math.max(60, Number(event.target.value)))} /></label><label className="field"><span>Maximum replies</span><input type="number" min="1" max="20" value={maxReplies} disabled={running} onChange={(event) => setMaxReplies(Math.max(1, Math.min(20, Number(event.target.value))))} /></label><label className="field"><span>Session minutes</span><input type="number" min="5" max="60" value={sessionMinutes} disabled={running} onChange={(event) => setSessionMinutes(Math.max(5, Math.min(60, Number(event.target.value))))} /></label></div>
       <label className="agent-confirm"><input type="checkbox" checked={confirmed} disabled={running} onChange={(event) => setConfirmed(event.target.checked)} /><span>I understand that replies are public, model output can be wrong, and closing this page stops the authorized session.</span></label>
       <div className="button-row chamber-command-buttons"><button className="button primary" disabled={running || Boolean(working) || !identityReady || !serviceOnline} onClick={() => void start()}>Activate NEONCORE</button><button className="button danger" disabled={!running} onClick={() => stop("Emergency stop activated by the owner.")}>Emergency stop</button></div>
-      <div className="agent-status"><span className={running ? "online" : "offline"}>{running ? "● ACTIVE" : "○ STANDBY"}</span><code>{replyCount} / {maxReplies} REPLIES</code><code>{working || "No action in progress"}</code></div>
+      <div className="agent-status"><span className={running ? "online" : "offline"}>{running ? "● ACTIVE" : "○ STANDBY"}</span><code>{reliabilityState === "recovering" ? "RECOVERING" : "CONNECTION READY"}</code><code>{replyCount} / {maxReplies} REPLIES</code><code>{pendingCount} QUEUED</code><code>{withheldCount} WITHHELD</code><code>{ignoredCount} IGNORED</code><code>{working || "No action in progress"}</code></div>
     </section>
     <section className="panel wide development-inference-panel"><div className="agent-transcript-heading"><div><p className="eyebrow">DEVELOPMENT INFERENCE METER</p><h2>Measured model use, not FLOP testnet spend</h2></div>{developmentActivity.length > 0 && <button className="button" onClick={() => identity && downloadText(`neoncore-development-inference-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ schema: "neoncore/development-inference-export/v1", owner_did: identity.did, scope: "off_network_development", records: developmentActivity }, null, 2))}>Download local activity</button>}</div><div className="flop-meter-grid"><div><span>MODEL CALLS</span><strong>{developmentSummary.calls.toLocaleString()}</strong></div><div><span>INPUT TOKENS</span><strong>{developmentSummary.inputTokens.toLocaleString()}</strong></div><div><span>OUTPUT TOKENS</span><strong>{developmentSummary.outputTokens.toLocaleString()}</strong></div><div><span>TOTAL TOKENS</span><strong>{developmentSummary.totalTokens.toLocaleString()}</strong></div></div><div className="status-line warn">Current provider usage is off-network development activity. It earns zero confirmed FLOP testnet credit.</div></section>
     {draft && <section className="panel wide"><p className="eyebrow">REVIEW REQUIRED</p><h2>Drafted public reply</h2>{draftTrigger && <div className="agent-draft-context"><span>INCOMING MESSAGE</span><p>{draftTrigger.text}</p></div>}{draftUsage && <div className="status-line muted">Development inference recorded: {draftUsage.total_tokens.toLocaleString()} tokens. Not FLOP testnet spend.</div>}<textarea rows={6} value={draft} onChange={(event) => setDraft(event.target.value)} /><div className="button-row"><button className="button primary" disabled={Boolean(working)} onClick={() => void publishDraft()}>Approve, sign, and publish</button><button className="button" onClick={() => { setDraft(""); setDraftTrigger(null); setDraftUsage(null); }}>Discard draft</button></div></section>}
     <section className="panel wide"><div className="agent-transcript-heading"><div><p className="eyebrow">OWNER CONVERSATION TRANSCRIPT</p><h2>What was asked and what NEONCORE answered</h2></div>{conversations.length > 0 && <button className="button" onClick={() => { if (!identity || !window.confirm("Clear this public conversation transcript from this browser? The signed Technocore messages will remain public.")) return; window.localStorage.removeItem(liveAgentTranscriptKey(identity.did, room)); setConversations([]); }}>Clear local transcript</button>}</div>{conversations.length ? <div className="agent-conversations">{conversations.map((entry) => <article key={entry.id}><header><code>{entry.sender_did}</code><time>{entry.responded_at ? new Date(entry.responded_at).toLocaleString() : "unknown time"}</time></header><div className="agent-message incoming"><span>INCOMING MESSAGE</span><p>{entry.incoming_text}</p></div><div className="agent-message response"><span>NEONCORE RESPONSE</span><p>{entry.reply_text}</p></div><footer><code>ROOM {entry.room}</code><code>SEQ {String(entry.room_sequence ?? "unknown")}</code>{entry.inference_usage && <code>DEV INFERENCE {entry.inference_usage.total_tokens.toLocaleString()} TOKENS</code>}<code>{entry.proof_id}</code></footer></article>)}</div> : <div className="status-line muted">No completed NEONCORE conversations are saved in this browser for room {room}.</div>}</section>
     <section className="panel wide"><p className="eyebrow">LOCAL ACTIVITY</p><h2>Control Chamber log</h2>{activity.length ? <div className="agent-log">{activity.map((item, index) => <code key={`${item}-${index}`}>{item}</code>)}</div> : <div className="status-line muted">No authorized Control Chamber session has started in this browser.</div>}</section>
-    <section className="panel wide"><p className="eyebrow">AUTHORITY BOUNDARY</p><div className="limits-grid"><p><strong>Local signing</strong>The DID key remains in this browser and never enters the model request.</p><p><strong>Owner locked relay</strong>The server model accepts only short lived requests signed by the configured owner DID.</p><p><strong>No background daemon</strong>The session ends when the page closes, refreshes, reaches its limit, or encounters an error.</p><p><strong>No link execution</strong>Room links remain untrusted text and are never opened automatically.</p></div></section>
+    <section className="panel wide"><p className="eyebrow">AUTHORITY BOUNDARY</p><div className="limits-grid"><p><strong>Local signing</strong>The DID key remains in this browser and never enters the model request.</p><p><strong>Owner locked relay</strong>The server model accepts only short lived requests signed by the configured owner DID.</p><p><strong>Safe recovery</strong>Temporary read failures retry automatically. An uncertain publish stops the session before another message can be signed.</p><p><strong>No link execution</strong>Room links remain untrusted text and are never opened automatically.</p></div></section>
   </div>;
 }

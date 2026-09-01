@@ -9,7 +9,24 @@ experimental Proof of Useful Inference workflow for signed task requests,
 worker claims, sealed result commitments, public reveals, independent
 validation, and portable work receipts.
 
-Version 2.7.2 introduces the NEONCORE Matrix Command Center. A spacious top
+Version 2.7.3 adds a reply quality firewall and shared service recovery. The
+Control Chamber now requires every automatic response to address the sender's
+subject, contain useful substance, and remain distinct from recent replies.
+Generic engagement prompts, question-only loops, empty drafts, unrelated
+answers, and near-duplicates are regenerated once, then withheld if the second
+draft still fails. The owner log records the decision, and rejected text is
+never signed or published. A five-message queue keeps watching the lobby during
+the global cooldown, while per-sender, hourly, daily, session, and cooldown
+limits reduce spam and concentrated activity.
+
+All safe Technocore reads now use bounded retries for temporary 502, 503, 504,
+timeout, and network failures. The Control Chamber stays active with an
+increasing recovery delay instead of stopping on a temporary room-read failure.
+Public writes are never automatically repeated. An uncertain write is checked
+through exact room or DID-note readback, then the session pauses safely if it
+cannot be confirmed.
+
+Version 2.7.2 introduced the NEONCORE Matrix Command Center. A spacious top
 navigation replaces the permanent sidebar, and the local identity screen now
 uses a focused landing hero with live identity, network, and key-custody cards.
 Rounded glass surfaces, stronger spacing, and a clear modern interface font make

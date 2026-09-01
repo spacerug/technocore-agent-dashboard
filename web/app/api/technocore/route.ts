@@ -13,23 +13,39 @@ function json(value: unknown, status = 200): Response {
   });
 }
 
-async function technocoreFetch(url: string, init?: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
-  try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Neon-Memory-Passport-Web/1.0",
-        Accept: "application/json, text/plain",
-        ...(init?.headers ?? {}),
-      },
-      cache: "no-store",
-    });
-  } finally {
-    clearTimeout(timeout);
+type FetchMode = "safe-read" | "write-once";
+
+async function technocoreFetch(url: string, init?: RequestInit, mode: FetchMode = "safe-read"): Promise<Response> {
+  const attempts = mode === "safe-read" ? 3 : 1;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) await wait(attempt === 1 ? 250 : 750);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Neon-Memory-Passport-Web/1.0",
+          Accept: "application/json, text/plain",
+          ...(init?.headers ?? {}),
+        },
+        cache: "no-store",
+      });
+      if (mode === "safe-read" && [502, 503, 504].includes(response.status) && attempt + 1 < attempts) {
+        await response.text().catch(() => "");
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (mode === "write-once" || attempt + 1 >= attempts) throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+  throw lastError instanceof Error ? lastError : new Error("Technocore is unavailable.");
 }
 
 function sequenceFrom(value: unknown): number | undefined {
@@ -106,8 +122,9 @@ async function confirmRoomMessage(
   text: string,
   since?: number,
 ): Promise<Record<string, unknown> | undefined> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (attempt > 0) await wait(attempt * 300);
+  const propagationDelays = [0, 500, 1_500, 3_000];
+  for (const delay of propagationDelays) {
+    if (delay > 0) await wait(delay);
     try {
       const posted = exactMessage(await readRoom(room, 200, since), did, nonce, text);
       if (posted) return posted;
@@ -143,25 +160,38 @@ async function registerDidNote(body: Record<string, unknown>): Promise<Response>
 
   const fingerprint = await didFingerprint(did);
   const notePath = `/kv/did-${fingerprint.slice(0, 2)}/${fingerprint.slice(2)}`;
-  const write = await technocoreFetch(`${BASE_URL}${notePath}/set/${encodeURIComponent(did)}`, {
-    headers: { Accept: "text/plain" },
-  });
-  if (!write.ok) return json({ ok: false, error: `Technocore returned HTTP ${write.status} while registering the public DID note.` }, 502);
-  await write.text();
-
-  const check = await technocoreFetch(`${BASE_URL}${notePath}`, { headers: { Accept: "text/plain" } });
-  const registeredDid = noteValueFromResponse(await check.text());
-  if (!check.ok || registeredDid !== did) {
-    return json({ ok: false, error: "Technocore did not confirm the public DID note." }, 502);
+  let writeStatus: number | undefined;
+  let writeAccepted = false;
+  try {
+    const write = await technocoreFetch(`${BASE_URL}${notePath}/set/${encodeURIComponent(did)}`, {
+      headers: { Accept: "text/plain" },
+    }, "write-once");
+    writeStatus = write.status;
+    writeAccepted = write.ok;
+    await write.text();
+  } catch {
+    // A write can reach Technocore even if its response is lost. Read back the
+    // exact note before deciding whether registration succeeded.
   }
-  return json({
-    ok: true,
-    registered: true,
-    did,
-    fingerprint,
-    path: notePath,
-    detail: "The public DID note was confirmed in Technocore's sharded registry.",
-  });
+
+  try {
+    const check = await technocoreFetch(`${BASE_URL}${notePath}`, { headers: { Accept: "text/plain" } });
+    const registeredDid = noteValueFromResponse(await check.text());
+    if (check.ok && registeredDid === did) {
+      return json({
+        ok: true,
+        registered: true,
+        did,
+        fingerprint,
+        path: notePath,
+        detail: "The public DID note was confirmed in Technocore's sharded registry.",
+      });
+    }
+  } catch {
+    // Return one clear unconfirmed result below.
+  }
+  const statusDetail = writeStatus && !writeAccepted ? ` The write returned HTTP ${writeStatus}.` : "";
+  return json({ ok: false, confirmed: false, error: `Technocore did not confirm the public DID note.${statusDetail} Do not immediately register it again. Check the note path after the service recovers.` }, 502);
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -232,7 +262,7 @@ export async function POST(request: Request): Promise<Response> {
     const signedUrl = `${BASE_URL}/r/${encodeURIComponent(room)}/say-signed/${encodeURIComponent(did)}/${encodeURIComponent(sig)}/${encodeURIComponent(nonce)}/${encodeURIComponent(text)}`;
     const response = await technocoreFetch(signedUrl, {
       headers: { Accept: "text/plain" },
-    });
+    }, "write-once");
     const responseText = await response.text();
     if (response.ok) {
       const firstLine = responseText.split(/\r?\n/, 1)[0]?.trim() ?? "";

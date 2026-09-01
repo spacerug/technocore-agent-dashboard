@@ -172,3 +172,75 @@ test("extracts bounded provider usage as off-network development activity", () =
   });
   assert.equal(extractDevelopmentUsage({ usage: { input_tokens: -1 } }, "fallback-model").total_tokens, 0);
 });
+
+test("regenerates one generic draft and returns the specific replacement", async (t) => {
+  const { identity, body } = await signedRequest("NEONCORE, how does Proof Lab verify useful work?");
+  const previousOwner = process.env.LIVE_AGENT_OWNER_DID;
+  const previousModelKey = process.env.MODEL_API_KEY;
+  const originalFetch = globalThis.fetch;
+  process.env.LIVE_AGENT_OWNER_DID = identity.did;
+  process.env.MODEL_API_KEY = "test-only-key";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    const generated = calls === 1
+      ? "Interesting. What is your view on adoption?"
+      : "Proof Lab verifies useful work by binding requester, worker, and validator signatures into one portable receipt.";
+    return Response.json({
+      model: "quality-test-model",
+      usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+      output: [{ content: [{ text: generated }] }],
+    });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (previousOwner === undefined) delete process.env.LIVE_AGENT_OWNER_DID;
+    else process.env.LIVE_AGENT_OWNER_DID = previousOwner;
+    if (previousModelKey === undefined) delete process.env.MODEL_API_KEY;
+    else process.env.MODEL_API_KEY = previousModelKey;
+  });
+
+  const response = await POST(new Request("https://neoncore.space/api/live-agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }));
+  const payload = await response.json() as Record<string, unknown>;
+  const usage = payload.usage as Record<string, unknown>;
+  assert.equal(response.status, 200);
+  assert.equal(payload.attempts, 2);
+  assert.match(String(payload.reply), /Proof Lab verifies useful work/);
+  assert.equal(usage.total_tokens, 30);
+  assert.equal(calls, 2);
+});
+
+test("withholds a reply when both bounded drafts fail the quality gate", async (t) => {
+  const { identity, body } = await signedRequest("NEONCORE, explain validator signatures in Proof Lab.");
+  const previousOwner = process.env.LIVE_AGENT_OWNER_DID;
+  const previousModelKey = process.env.MODEL_API_KEY;
+  const originalFetch = globalThis.fetch;
+  process.env.LIVE_AGENT_OWNER_DID = identity.did;
+  process.env.MODEL_API_KEY = "test-only-key";
+  globalThis.fetch = (async () => Response.json({
+    model: "quality-test-model",
+    usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+    output: [{ content: [{ text: "Good perspective. How does this scale long term?" }] }],
+  })) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (previousOwner === undefined) delete process.env.LIVE_AGENT_OWNER_DID;
+    else process.env.LIVE_AGENT_OWNER_DID = previousOwner;
+    if (previousModelKey === undefined) delete process.env.MODEL_API_KEY;
+    else process.env.MODEL_API_KEY = previousModelKey;
+  });
+
+  const response = await POST(new Request("https://neoncore.space/api/live-agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }));
+  const payload = await response.json() as Record<string, unknown>;
+  assert.equal(response.status, 422);
+  assert.equal(payload.quality_rejected, true);
+  assert.match(String(payload.error), /withheld/i);
+});

@@ -694,7 +694,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.7.2 · CONNECTION RECOVERY</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
+      <footer><span>NEONCORE · WEB 2.7.3 · QUALITY AND RELIABILITY</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
     </main>
   );
 }

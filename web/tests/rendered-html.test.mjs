@@ -65,7 +65,7 @@ test("uses the readable NEONCORE Matrix Command Center visual system", () => {
   assert.match(css, /\.identity-hero/);
   assert.match(css, /\.primary-nav/);
   assert.match(css, /focus-visible/);
-  assert.match(dashboard, /WEB 2\.7\.2 · CONNECTION RECOVERY/);
+  assert.match(dashboard, /WEB 2\.7\.3 · QUALITY AND RELIABILITY/);
   assert.match(dashboard, /Your agent has a DID/);
   assert.match(dashboard, /Current session status/);
   assert.match(css, /@media \(max-width: 1680px\)/);
@@ -78,7 +78,7 @@ test("renders accessible DID filtering above a motion-safe Matrix background", (
   const css = readFileSync("app/globals.css", "utf8");
   assert.match(dashboard, /className="check pixel-check"/);
   assert.match(dashboard, /className="pixel-check-box"/);
-  assert.match(dashboard, /WEB 2\.7\.2 · CONNECTION RECOVERY/);
+  assert.match(dashboard, /WEB 2\.7\.3 · QUALITY AND RELIABILITY/);
   assert.match(matrix, /prefers-reduced-motion: reduce/);
   assert.match(matrix, /aria-hidden="true"/);
   assert.match(css, /\.matrix-rain/);
@@ -92,4 +92,18 @@ test("retries temporary Technocore outages after a DID loads", () => {
   assert.match(dashboard, /const delays = \[0, 2_500, 6_000, 12_000\]/);
   assert.match(dashboard, /Automatic retry/);
   assert.match(dashboard, /You do not need to reload the DID/);
+});
+
+test("shows the owner quality firewall and bounded reliability controls", () => {
+  const agent = readFileSync("app/components/LiveAgent.tsx", "utf8");
+  const quality = readFileSync("app/lib/live-agent-quality.ts", "utf8");
+  const route = readFileSync("app/api/technocore/route.ts", "utf8");
+  assert.match(agent, /Quality firewall/);
+  assert.match(agent, /15 minutes per sender/);
+  assert.match(agent, /RECOVERING/);
+  assert.match(agent, /MAX_PENDING_TRIGGERS = 5/);
+  assert.match(quality, /generic_engagement/);
+  assert.match(quality, /repetitive/);
+  assert.match(route, /type FetchMode = "safe-read" \| "write-once"/);
+  assert.match(route, /An uncertain publish stops the session|write-once/);
 });

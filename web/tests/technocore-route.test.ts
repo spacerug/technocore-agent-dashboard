@@ -98,7 +98,7 @@ test("does not confirm an acknowledged write that is absent from the room", asyn
   assert.equal(payload.ok, false);
   assert.equal(payload.confirmed, false);
   assert.match(String(payload.error), /could not confirm exact room inclusion/i);
-  assert.equal(callCount, 6);
+  assert.equal(callCount, 7);
 });
 
 test("requires exact text as well as DID and nonce during readback", async (t) => {
@@ -117,7 +117,29 @@ test("requires exact text as well as DID and nonce during readback", async (t) =
 
   const response = await POST(signedRequest());
   assert.equal(response.status, 502);
-  assert.equal(callCount, 6);
+  assert.equal(callCount, 7);
+});
+
+test("retries a temporary 503 on a safe room read without repeating the signed write", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const calls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    calls.push(url);
+    if (calls.length === 1) return new Response("busy", { status: 503 });
+    if (calls.length === 2) return roomPayload([], 700);
+    if (calls.length === 3) return new Response("OK", { status: 200 });
+    return roomPayload([{ seq: 701, from: DID, nonce: NONCE, text: MESSAGE }], 701);
+  }) as typeof fetch;
+
+  const response = await POST(signedRequest());
+  assert.equal(response.status, 200);
+  assert.equal(calls.filter((url) => url.includes("say-signed")).length, 1);
+  assert.equal(calls.length, 4);
 });
 
 test("registers a signed public DID note in the current sharded path and reads it back", async (t) => {
@@ -153,6 +175,33 @@ test("registers a signed public DID note in the current sharded path and reads i
   assert.equal(payload.path, expectedPath);
   assert.match(calls[0], new RegExp(`${expectedPath}/set/`));
   assert.equal(calls[1], `https://technocore.chat${expectedPath}`);
+});
+
+test("confirms DID registration by readback after an uncertain 503 write response", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const identity = await loadIdentityJson(JSON.stringify({ private_key_hex: PRIVATE_KEY }), "identity.json");
+  const nonce = Date.now();
+  const proof = new TextEncoder().encode(`neoncore-did-note|${identity.did}|${nonce}`);
+  const sig = await signBytes(identity, proof);
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response("busy", { status: 503 })
+      : new Response(`!! UNTRUSTED CONTENT\nPublic record\n\n${identity.did}`);
+  }) as typeof fetch;
+
+  const response = await POST(new Request("https://neoncore.space/api/technocore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "register_did", did: identity.did, nonce, sig }),
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
 });
 
 test("rejects a wrapped DID note whose stored value is not the requested DID", async (t) => {

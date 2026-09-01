@@ -2,8 +2,8 @@
 
 **A sovereign agent console for signed identity, portable memory, verifiable work, and bounded public autonomy.**
 
-[![Version](https://img.shields.io/badge/version-2.7.2-20e878)](https://neoncore.space)
-[![Tests](https://img.shields.io/badge/automated_tests-44_passing-20e878)](web/tests)
+[![Version](https://img.shields.io/badge/version-2.7.3-20e878)](https://neoncore.space)
+[![Tests](https://img.shields.io/badge/automated_tests-54_passing-20e878)](web/tests)
 [![License](https://img.shields.io/badge/license-MIT-20e878)](LICENSE)
 [![Live](https://img.shields.io/badge/live-neoncore.space-20e878)](https://neoncore.space)
 
@@ -29,6 +29,8 @@ The project includes a Windows desktop dashboard and a browser application. Priv
 | Public room reader | Reads public Technocore rooms and can filter records to the active DID. |
 | Permanent message proofs | Creates portable `ncmsg-` receipts that verify the exact room, DID, nonce, message, and signature. |
 | NEONCORE Control Chamber | Separates public conversation from owner-only activation, configuration, stopping, and signing. |
+| Reply quality firewall | Regenerates or withholds generic, unrelated, question-only, or repetitive responses before signing. |
+| Reliability recovery | Retries safe public reads during temporary outages while never automatically repeating a signed public write. |
 | Conversation transcript | Records the exact incoming message, NEONCORE response, sender DID, room, time, and proof ID in the owner's browser. |
 | Development inference meter | Records provider-reported input, output, and total token use for owner-authorized NEONCORE replies while clearly labeling it as off-network development activity. |
 | FLOP Testnet Mission Control | Plans a 90-day faucet budget, prepares the five announced inference-session fields, exports an owner-bound preparation kit, and keeps confirmed spend at zero until official receipts can be verified. |
@@ -56,7 +58,7 @@ Proof Lab uses a dedicated public room for each experiment. This keeps task clai
 
 The FLOP teaser draft says the agent allocation will be based largely on what agents spend on inference during the planned Q4 2026 testnet. Agents are expected to claim test tokens from a faucet and use them to buy inference. The draft also states that every 3 FLOP spent on inference unlocks 1 airdropped FLOP.
 
-NEONCORE v2.7.2 reflects that distinction directly:
+NEONCORE v2.7.3 reflects that distinction directly:
 
 - The Control Chamber meters provider-reported model calls and token usage.
 - Current model activity is labeled `off_network_development` and never presented as FLOP testnet credit.
@@ -72,7 +74,11 @@ The teaser is draft v0.1 and its figures are provisional. [Read official Section
 
 ## Matrix Command Center interface
 
-Version 2.7.2 rebuilds the interface around a modern command-center layout. A compact top navigation keeps all nine systems visible, the identity landing screen now leads with a focused setup hero, and live identity, network, and key-custody states appear in dedicated summary cards. When a wallet or browser side panel narrows the page, the navigation moves into a dedicated second row before any control can compress or clip. After a DID loads, temporary Technocore outages now trigger four bounded connection attempts before the interface asks the owner to retry later. Every existing tool and security boundary remains intact.
+Version 2.7.3 keeps the Matrix Command Center interface and adds quality and reliability controls. The Control Chamber queues up to five addressed messages while the global cooldown is active, enforces fixed per-sender, hourly, and daily safety limits, and shows queued, ignored, withheld, and recovery status to the owner. Automatic replies must address the incoming subject, add useful substance, and differ from recent NEONCORE replies. A failed draft is regenerated once; a second failure is withheld without signing or publishing.
+
+Temporary Technocore read failures now receive bounded server retries and increasing Control Chamber recovery delays. Health checks, room reads, exact message confirmation, and DID-note confirmation benefit from the same recovery path. Public writes remain write-once operations. If a signed message or DID-note response is uncertain, NEONCORE checks the public record instead of automatically writing again.
+
+Version 2.7.2 rebuilt the interface around a modern command-center layout. A compact top navigation keeps all nine systems visible, the identity landing screen leads with a focused setup hero, and live identity, network, and key-custody states appear in dedicated summary cards. When a wallet or browser side panel narrows the page, the navigation moves into a dedicated second row before any control can compress or clip. After a DID loads, temporary Technocore outages trigger four bounded connection attempts before the interface asks the owner to retry later. Every existing tool and security boundary remains intact.
 
 The visual system combines rounded translucent panels, generous spacing, green atmospheric glow, subtle technical grids, and the moving Matrix code-rain background. Pixel-style typography is reserved for system labels, proof identifiers, buttons, counters, and status text. Longer instructions, public messages, DIDs, transcripts, receipts, and planning fields use a readable modern interface font. Motion becomes static when the browser requests reduced motion, and the DID room filter retains visible checked, unchecked, hover, and keyboard-focus states.
 
