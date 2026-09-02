@@ -39,8 +39,9 @@ import ProofLab from "./ProofLab";
 import LiveAgent from "./LiveAgent";
 import FlopReadiness from "./FlopReadiness";
 import MatrixRain from "./MatrixRain";
+import TclkDealLab from "./TclkDealLab";
 
-type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "flop" | "safety";
+type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "tclk" | "flop" | "safety";
 type ServiceState = "unchecked" | "checking" | "online" | "offline";
 type RoomMessage = { seq?: number; ts?: string; from?: string; nonce?: number | string; text?: string };
 
@@ -52,8 +53,9 @@ const NAV: Array<{ id: Tab; number: string; label: string; note: string }> = [
   { id: "artifact", number: "05", label: "Artifact", note: "Signed provenance" },
   { id: "memory", number: "06", label: "Memory Passport", note: "Encrypted handoff" },
   { id: "proof", number: "07", label: "Proof Lab", note: "Verified work" },
-  { id: "flop", number: "08", label: "FLOP Testnet", note: "Mission control" },
-  { id: "safety", number: "09", label: "Safety", note: "Know the limits" },
+  { id: "tclk", number: "08", label: "TCLK Deal Lab", note: "Alpha simulation" },
+  { id: "flop", number: "09", label: "FLOP Testnet", note: "Mission control" },
+  { id: "safety", number: "10", label: "Safety", note: "Know the limits" },
 ];
 
 function formatError(error: unknown): string {
@@ -152,6 +154,7 @@ export default function NeonDashboard() {
     const openLinkedSection = () => {
       if (window.location.hash === "#memory") setTab("memory");
       if (window.location.hash === "#proof") setTab("proof");
+      if (window.location.hash === "#tclk") setTab("tclk");
       if (window.location.hash === "#flop") setTab("flop");
     };
     openLinkedSection();
@@ -263,16 +266,17 @@ export default function NeonDashboard() {
     if (!identity || !identityReady) return setNotice({ tone: "bad", text: "Load an identity and finish its backup first." });
     if (service !== "online") return setNotice({ tone: "bad", text: "Connect to Technocore before registering the public DID note." });
     const nonce = Date.now();
-    const proof = new TextEncoder().encode(`neoncore-did-note|${identity.did}|${nonce}`);
+    const noteValue = `${identity.did} tclk1:paper`;
+    const proof = new TextEncoder().encode(`neoncore-did-note|${identity.did}|${nonce}|${noteValue}`);
     const sig = await signBytes(identity, proof);
     await run("Registering and checking the public DID note...", () => apiJson("/api/technocore", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "register_did", did: identity.did, nonce, sig }),
+      body: JSON.stringify({ action: "register_did", did: identity.did, nonce, sig, tclk: true }),
     }), (payload) => {
       const path = String(payload.path ?? "");
       setDidNotePath(path);
-      setNotice({ tone: "good", text: `Public DID note confirmed at ${path}. Your private key never left this browser.` });
+      setNotice({ tone: "good", text: `Public DID note and tclk1:paper capability confirmed at ${path}. The capability is a routing hint; signed frames remain the proof.` });
     });
   }
 
@@ -558,8 +562,8 @@ export default function NeonDashboard() {
                   <div className="did-block"><span>PUBLIC DID</span><code>{identity.did}</code></div>
                   <div className="button-row"><button className="button" onClick={() => navigator.clipboard.writeText(identity.did)}>Copy public DID</button><button className={`button ${identityBackedUp ? "" : "danger"}`} onClick={downloadIdentity}>Download private identity backup</button></div>
                   {!identityBackedUp && <StatusLine tone="warn">Required: download the private backup before this new identity can sign anything.</StatusLine>}
-                  <StatusLine>Optional public discovery: register only your public DID in Technocore&apos;s current 256 shard note registry. The private key signs locally and is never sent.</StatusLine>
-                  <div className="button-row"><button className="button" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={registerDidNote}>Register public DID note</button></div>
+                  <StatusLine>Optional public discovery: register your public DID plus the <code>tclk1:paper</code> capability in Technocore&apos;s current 256 shard note registry. The note is a routing hint, not identity proof.</StatusLine>
+                  <div className="button-row"><button className="button" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={registerDidNote}>Register DID + TCLK capability</button></div>
                   {didNotePath && <div className="did-block"><span>CONFIRMED DID NOTE PATH</span><code>{didNotePath}</code></div>}
                 </> : <StatusLine>No file selected. Your computer has not shared any key material with this site.</StatusLine>}
               </Panel>
@@ -678,15 +682,26 @@ export default function NeonDashboard() {
             />
           )}
 
+          {tab === "tclk" && (
+            <TclkDealLab
+              identity={identity}
+              identityReady={identityReady}
+              serviceOnline={service === "online"}
+              publishSigned={publishSigned}
+              readRoomMessages={readProofRoom}
+              onNotice={setNotice}
+            />
+          )}
+
           {tab === "flop" && (
             <FlopReadiness identity={identity} identityReady={identityReady} />
           )}
 
           {tab === "safety" && (
             <div className="page-grid">
-              <div className="page-heading"><p className="eyebrow">STEP 09 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 10 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
               <Panel title="Never leaves your browser"><ul className="check-list"><li>Identity JSON and Ed25519 private key</li><li>Memory Passport passwords</li><li>Decrypted private memory</li><li>Original artwork before you publish it yourself</li></ul></Panel>
-              <Panel title="Public data the relay receives"><ul className="public-list"><li>Technocore room and message text</li><li>Public DID, nonce, and signature</li><li>Proof Lab tasks, results, and validator decisions you publish</li><li>Health and public room read requests</li></ul></Panel>
+              <Panel title="Public data the relay receives"><ul className="public-list"><li>Technocore room and message text</li><li>Public DID, nonce, and signature</li><li>Proof Lab tasks, results, and validator decisions you publish</li><li>TCLK frames and PaperRail rehearsal notes you publish</li><li>Health and public room read requests</li></ul></Panel>
               <Panel title="Important limitations" className="wide"><div className="limits-grid"><p><strong>No unattended weekly signing</strong>A website cannot safely sign after it is closed unless a server stores the private key. This app refuses that design.</p><p><strong>No decentralized storage claim</strong>Passports are portable encrypted files. You control where they are backed up.</p><p><strong>No truth oracle</strong>A valid DID signature proves authorship and integrity, not that every written claim is true.</p><p><strong>Technocore is ephemeral</strong>Keep public cards, artifact packages, and receipts somewhere durable.</p></div></Panel>
               <Panel title="Open source"><p>Inspect, audit, and contribute through the public repository.</p><a className="button primary link-button" href="https://github.com/spacerug/technocore-agent-dashboard" target="_blank" rel="noreferrer">View GitHub repository</a></Panel>
               <Panel title="Before publishing"><p>Never upload <code>flop_agent_identity.json</code>, any <code>.neonpass.json</code> file, passwords, wallet keys, or seed phrases.</p><StatusLine tone="warn">Public DID: safe. Private identity: secret. Public memory card: inspect first. Private passport: keep private.</StatusLine></Panel>
@@ -694,7 +709,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.7.3 · QUALITY AND RELIABILITY</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
+      <footer><span>NEONCORE · WEB 2.9.0 · TCLK DEAL LAB</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
     </main>
   );
 }

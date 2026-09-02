@@ -135,7 +135,7 @@ export default function FlopReadiness({ identity, identityReady }: Props) {
     </section>
 
     <div className="page-heading">
-      <p className="eyebrow">STEP 08 / FLOP TESTNET MISSION CONTROL</p>
+      <p className="eyebrow">STEP 09 / FLOP TESTNET MISSION CONTROL</p>
       <h1>Prepare to claim faucet tokens and buy useful inference.</h1>
       <p>The draft makes agent participation measurable: claim test tokens, spend them on real inference, and retain verifiable network receipts. NEONCORE prepares the budget and request shape now without pretending development calls are eligible.</p>
     </div>

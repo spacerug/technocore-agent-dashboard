@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
-import { POST } from "../app/api/technocore/route";
+import { GET, POST } from "../app/api/technocore/route";
 import { loadIdentityJson, signBytes } from "../app/lib/browser-crypto";
+import { paperNoteAuthorizationText } from "../app/lib/tclk-deal";
 
 const DID = "did:key:z6MkvNuQBWuTsmqZQaDPrnkWYZYvByG58a2y3GgPS3PsfCvf";
 const SIG = "A".repeat(86);
@@ -226,4 +227,136 @@ test("rejects a wrapped DID note whose stored value is not the requested DID", a
 
   assert.equal(response.status, 502);
   assert.match(JSON.stringify(await response.json()), /did not confirm/i);
+});
+
+test("registers the official tclk1:paper routing capability in the DID note", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const identity = await loadIdentityJson(JSON.stringify({ private_key_hex: PRIVATE_KEY }), "identity.json");
+  const nonce = Date.now();
+  const noteValue = `${identity.did} tclk1:paper`;
+  const proof = new TextEncoder().encode(`neoncore-did-note|${identity.did}|${nonce}|${noteValue}`);
+  const sig = await signBytes(identity, proof);
+  const calls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    calls.push(String(input));
+    return calls.length === 1
+      ? new Response("OK")
+      : new Response(`!! UNTRUSTED CONTENT\nPublic routing note\n\n${noteValue}`);
+  }) as typeof fetch;
+
+  const response = await POST(new Request("https://neoncore.space/api/technocore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "register_did", did: identity.did, nonce, sig, tclk: true }),
+  }));
+  const payload = (await response.json()) as Record<string, unknown>;
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.value, noteValue);
+  assert.equal(payload.capability, "tclk1:paper");
+  assert.match(calls[0], /tclk1%3Apaper/);
+});
+
+test("reads a wrapped PaperRail note through the bounded proxy", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const value = `tclkpaper1 locked hash 0x${"11".repeat(32)} ${Date.now() + 120_000}`;
+  globalThis.fetch = (async () => new Response(`!! UNTRUSTED CONTENT\nPublic simulation note\n\n${value}`)) as typeof fetch;
+
+  const response = await GET(new Request("https://neoncore.space/api/technocore?action=tclk_paper_get&ns=tclk-paper-ab&key=0123456789cdef"));
+  const payload = (await response.json()) as Record<string, unknown>;
+  assert.equal(response.status, 200);
+  assert.equal(payload.value, value);
+  assert.equal(payload.path, "/kv/tclk-paper-ab/0123456789cdef");
+});
+
+test("applies a locally signed PaperRail note once and requires exact readback", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const identity = await loadIdentityJson(JSON.stringify({ private_key_hex: PRIVATE_KEY }), "identity.json");
+  const nonce = Date.now();
+  const ns = "tclk-paper-ab";
+  const key = "0123456789cdef";
+  const value = `tclkpaper1 locked hash 0x${"22".repeat(32)} ${nonce + 120_000}`;
+  const condition = { ifAbsent: true } as const;
+  const sig = await signBytes(identity, new TextEncoder().encode(paperNoteAuthorizationText({
+    did: identity.did,
+    nonce,
+    ns,
+    key,
+    value,
+    condition,
+  })));
+  const calls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    calls.push(String(input));
+    return calls.length === 1
+      ? new Response("OK")
+      : new Response(`!! UNTRUSTED CONTENT\nPublic simulation note\n\n${value}`);
+  }) as typeof fetch;
+
+  const response = await POST(new Request("https://neoncore.space/api/technocore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "tclk_paper_set", did: identity.did, nonce, ns, key, value, sig, condition: { if_absent: true } }),
+  }));
+  const payload = (await response.json()) as Record<string, unknown>;
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.applied, true);
+  assert.equal(payload.path, `/kv/${ns}/${key}`);
+  assert.match(calls[0], /\?if_absent=1$/);
+  assert.equal(calls.length, 2);
+});
+
+test("rejects a PaperRail mutation when any signed field is changed", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const identity = await loadIdentityJson(JSON.stringify({ private_key_hex: PRIVATE_KEY }), "identity.json");
+  const nonce = Date.now();
+  const ns = "tclk-paper-ab";
+  const key = "0123456789cdef";
+  const signedValue = `tclkpaper1 locked hash 0x${"33".repeat(32)} ${nonce + 120_000}`;
+  const sig = await signBytes(identity, new TextEncoder().encode(paperNoteAuthorizationText({
+    did: identity.did,
+    nonce,
+    ns,
+    key,
+    value: signedValue,
+    condition: { ifAbsent: true },
+  })));
+  let called = false;
+  globalThis.fetch = (async () => {
+    called = true;
+    return new Response("unexpected");
+  }) as typeof fetch;
+
+  const response = await POST(new Request("https://neoncore.space/api/technocore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "tclk_paper_set",
+      did: identity.did,
+      nonce,
+      ns,
+      key,
+      value: signedValue.replace(`0x${"33".repeat(32)}`, `0x${"34".repeat(32)}`),
+      sig,
+      condition: { if_absent: true },
+    }),
+  }));
+
+  assert.equal(response.status, 401);
+  assert.equal(called, false);
 });

@@ -1100,6 +1100,104 @@ footer {
   letter-spacing: .11em;
 }
 
+/* TCLK Deal Lab */
+.tclk-page { --tclk-cyan: #68f4d4; --tclk-amber: #ffd166; }
+.tclk-page .page-heading { max-width: 980px; }
+.tclk-page .page-heading > p:last-child, .tclk-page .panel > p { font-size: 15px; }
+
+.tclk-alpha-banner {
+  display: grid;
+  grid-template-columns: auto auto minmax(220px, 1fr);
+  align-items: center;
+  gap: 12px 18px;
+  padding: 15px 18px;
+  border: 1px solid rgba(255, 209, 102, .48);
+  border-radius: 16px;
+  background: linear-gradient(90deg, rgba(71, 51, 8, .72), rgba(22, 19, 8, .9));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 20px 55px rgba(0, 0, 0, .18);
+}
+.tclk-alpha-banner strong, .tclk-alpha-banner span { font: 900 10px/1 var(--code-font); letter-spacing: .12em; }
+.tclk-alpha-banner strong { color: #fff0b9; }
+.tclk-alpha-banner span { justify-self: start; padding: 7px 10px; border: 1px solid rgba(255, 209, 102, .48); border-radius: 999px; color: var(--tclk-amber); }
+.tclk-alpha-banner p { margin: 0; color: #d7cba8; font-size: 13px; line-height: 1.5; }
+
+.tclk-protocol-panel { border-color: rgba(104, 244, 212, .3); background: linear-gradient(145deg, rgba(7, 32, 26, .94), rgba(5, 14, 9, .97)); }
+.tclk-protocol-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.tclk-protocol-head h2 { margin-bottom: 0; }
+.tclk-release-chip { flex: 0 0 auto; padding: 8px 11px; border: 1px solid rgba(104, 244, 212, .36); border-radius: 999px; background: rgba(7, 38, 30, .74); color: var(--tclk-cyan); font: 900 9px/1 var(--code-font); letter-spacing: .1em; }
+.tclk-release-chip.good { border-color: rgba(124, 255, 155, .5); color: var(--green); }
+.tclk-release-chip.warn { border-color: rgba(255, 209, 102, .5); color: var(--amber); }
+.tclk-release-chip.active { border-color: rgba(104, 244, 212, .5); color: var(--tclk-cyan); }
+
+.tclk-flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 20px 0; }
+.tclk-flow > div { position: relative; min-width: 0; padding: 15px; border: 1px solid rgba(104, 244, 212, .18); border-radius: 13px; background: rgba(2, 14, 10, .76); }
+.tclk-flow > div:not(:last-child)::after { position: absolute; top: 50%; right: -8px; z-index: 2; width: 8px; height: 1px; background: rgba(104, 244, 212, .42); content: ""; }
+.tclk-flow span, .tclk-flow strong { display: block; }
+.tclk-flow span { margin-bottom: 9px; color: #5a8f7e; font: 800 8px/1 var(--code-font); }
+.tclk-flow strong { color: #dffcf4; font: 850 9px/1.35 var(--code-font); letter-spacing: .07em; }
+
+.tclk-create-panel, .tclk-board-panel { border-color: rgba(104, 244, 212, .2); }
+.tclk-deadline-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.tclk-board-list { display: grid; gap: 11px; max-height: 610px; margin-top: 14px; overflow: auto; padding-right: 3px; }
+.tclk-board-list article { padding: 16px; border: 1px solid rgba(124, 255, 155, .16); border-radius: 14px; background: rgba(2, 10, 5, .7); }
+.tclk-board-list article > strong { display: block; overflow-wrap: anywhere; color: #effff2; font-size: 15px; }
+.tclk-board-list article > p { margin: 8px 0 0; color: #9eb5a4; font-size: 13px; line-height: 1.6; }
+.tclk-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.tclk-card-top code { color: #668a70; font-size: 9px; }
+.tclk-state { display: inline-flex; padding: 6px 8px; border: 1px solid rgba(104, 244, 212, .32); border-radius: 999px; color: var(--tclk-cyan); font: 900 8px/1 var(--code-font); letter-spacing: .1em; }
+.tclk-state.good { border-color: rgba(124, 255, 155, .42); color: var(--green); }
+.tclk-state.warn { border-color: rgba(255, 209, 102, .42); color: var(--amber); }
+.tclk-card-meta { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
+.tclk-card-meta span { padding: 6px 8px; border: 1px solid rgba(124, 255, 155, .12); border-radius: 8px; color: #8eaa95; font: 750 8px/1.3 var(--code-font); overflow-wrap: anywhere; }
+
+.tclk-recovery-gate { border-color: rgba(255, 209, 102, .42); background: linear-gradient(145deg, rgba(48, 36, 9, .7), rgba(8, 14, 9, .98)); }
+.tclk-recovery-gate .pixel-check { margin-top: 16px; }
+
+.tclk-deal-list { display: grid; gap: 9px; margin-top: 16px; }
+.tclk-deal-list article { display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, auto) auto; align-items: center; gap: 15px; padding: 13px 15px; border: 1px solid rgba(124, 255, 155, .14); border-radius: 13px; background: rgba(2, 10, 5, .7); }
+.tclk-deal-list article.selected { border-color: rgba(104, 244, 212, .55); background: rgba(10, 49, 38, .42); }
+.tclk-deal-list article > div { min-width: 0; }
+.tclk-deal-list article strong, .tclk-deal-list article code { display: block; }
+.tclk-deal-list article strong { margin-bottom: 5px; overflow-wrap: anywhere; color: #effff2; font-size: 14px; }
+.tclk-deal-list article code { overflow: hidden; color: #76a486; font-size: 9px; text-overflow: ellipsis; }
+.tclk-deal-list article > span { color: #91a898; font-size: 11px; }
+
+.tclk-inspector { border-color: rgba(104, 244, 212, .34); background: linear-gradient(145deg, rgba(6, 31, 24, .95), rgba(4, 13, 8, .98)); }
+.tclk-state-track { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 20px 0; }
+.tclk-state-track > div { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 11px; border: 1px solid rgba(124, 255, 155, .12); border-radius: 11px; color: #617d69; background: rgba(2, 10, 5, .6); }
+.tclk-state-track span { display: grid; flex: 0 0 23px; width: 23px; height: 23px; place-items: center; border: 1px solid currentColor; border-radius: 7px; font: 850 8px/1 var(--code-font); }
+.tclk-state-track strong { min-width: 0; overflow: hidden; font: 800 9px/1 var(--code-font); letter-spacing: .06em; text-overflow: ellipsis; text-transform: uppercase; }
+.tclk-state-track > div.complete { color: #73b989; }
+.tclk-state-track > div.active { border-color: rgba(104, 244, 212, .55); color: var(--tclk-cyan); box-shadow: 0 0 26px rgba(104, 244, 212, .07); }
+.tclk-inspector-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-bottom: 16px; }
+.tclk-inspector-grid > div { min-width: 0; padding: 14px; border: 1px solid rgba(124, 255, 155, .13); border-radius: 12px; background: rgba(2, 10, 5, .64); }
+.tclk-inspector-grid span, .tclk-inspector-grid code, .tclk-inspector-grid strong { display: block; }
+.tclk-inspector-grid span { margin-bottom: 8px; color: #668973; font: 850 8px/1 var(--code-font); letter-spacing: .1em; }
+.tclk-inspector-grid code, .tclk-inspector-grid strong { overflow-wrap: anywhere; color: #dcefe1; font: 700 11px/1.55 var(--code-font); }
+.tclk-rejections { margin-top: 12px; padding: 12px 14px; border: 1px solid rgba(255, 209, 102, .2); border-radius: 11px; color: #d8c99c; }
+.tclk-rejections summary { cursor: pointer; font-size: 12px; font-weight: 700; }
+.tclk-rejections li { margin-top: 7px; font-size: 11px; line-height: 1.5; }
+.tclk-actions-panel, .tclk-secret-panel { border-color: rgba(104, 244, 212, .2); }
+.tclk-secret-panel .did-block { margin-top: 14px; }
+.tclk-boundaries { border-color: rgba(255, 209, 102, .28); }
+
+@media (max-width: 900px) {
+  .tclk-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tclk-flow > div::after { display: none; }
+  .tclk-deal-list article { grid-template-columns: 1fr auto; }
+  .tclk-deal-list article > span { grid-column: 1 / -1; grid-row: 2; }
+}
+
+@media (max-width: 700px) {
+  .tclk-alpha-banner, .tclk-flow, .tclk-deadline-grid, .tclk-state-track, .tclk-inspector-grid { grid-template-columns: 1fr; }
+  .tclk-alpha-banner span { justify-self: stretch; text-align: center; }
+  .tclk-protocol-head { display: grid; }
+  .tclk-release-chip { justify-self: start; }
+  .tclk-deal-list article { grid-template-columns: 1fr; }
+  .tclk-deal-list article > span { grid-column: auto; grid-row: auto; }
+  .tclk-deal-list .button { width: 100%; }
+}
+
 @keyframes core-spin { to { transform: rotate(360deg); } }
 @keyframes core-spin-reverse { to { transform: rotate(-360deg); } }
 

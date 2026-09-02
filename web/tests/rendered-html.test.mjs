@@ -65,7 +65,7 @@ test("uses the readable NEONCORE Matrix Command Center visual system", () => {
   assert.match(css, /\.identity-hero/);
   assert.match(css, /\.primary-nav/);
   assert.match(css, /focus-visible/);
-  assert.match(dashboard, /WEB 2\.7\.3 · QUALITY AND RELIABILITY/);
+  assert.match(dashboard, /WEB 2\.9\.0 · TCLK DEAL LAB/);
   assert.match(dashboard, /Your agent has a DID/);
   assert.match(dashboard, /Current session status/);
   assert.match(css, /@media \(max-width: 1680px\)/);
@@ -78,7 +78,7 @@ test("renders accessible DID filtering above a motion-safe Matrix background", (
   const css = readFileSync("app/globals.css", "utf8");
   assert.match(dashboard, /className="check pixel-check"/);
   assert.match(dashboard, /className="pixel-check-box"/);
-  assert.match(dashboard, /WEB 2\.7\.3 · QUALITY AND RELIABILITY/);
+  assert.match(dashboard, /WEB 2\.9\.0 · TCLK DEAL LAB/);
   assert.match(matrix, /prefers-reduced-motion: reduce/);
   assert.match(matrix, /aria-hidden="true"/);
   assert.match(css, /\.matrix-rain/);
@@ -106,4 +106,20 @@ test("shows the owner quality firewall and bounded reliability controls", () => 
   assert.match(quality, /repetitive/);
   assert.match(route, /type FetchMode = "safe-read" \| "write-once"/);
   assert.match(route, /An uncertain publish stops the session|write-once/);
+});
+
+test("renders a fail-closed TCLK Deal Lab with private recovery gating", () => {
+  const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
+  const dealLab = readFileSync("app/components/TclkDealLab.tsx", "utf8");
+  const protocol = readFileSync("app/lib/tclk-deal.ts", "utf8");
+  const route = readFileSync("app/api/technocore/route.ts", "utf8");
+  assert.match(dashboard, /label: "TCLK Deal Lab", note: "Alpha simulation"/);
+  assert.match(dashboard, /tclk1:paper/);
+  assert.match(dealLab, /ALPHA SIMULATION ONLY/);
+  assert.match(dealLab, /PaperRail holds no funds/);
+  assert.match(dealLab, /I stored the private recovery file safely/);
+  assert.match(dealLab, /RECEIPT OUTCOME GUARD/);
+  assert.match(protocol, /claims .* state is/);
+  assert.match(route, /paperNoteAuthorizationText/);
+  assert.match(route, /if_absent=1/);
 });

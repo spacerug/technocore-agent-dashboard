@@ -1,10 +1,14 @@
 import { TECHNOCORE_BASE_URL } from "../../lib/technocore-config";
 import { verifyBytes } from "../../lib/browser-crypto";
+import { capabilityToken, decodePaperRecord } from "@flop-labs/tclk";
+import { paperNoteAuthorizationText, type PaperNoteCondition } from "../../lib/tclk-deal";
 
 const BASE_URL = TECHNOCORE_BASE_URL;
 const ROOM_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const DID_RE = /^did:key:z[1-9A-HJ-NP-Za-km-z]{40,100}$/;
 const SIG_RE = /^[A-Za-z0-9_-]{80,100}$/;
+const PAPER_NS_RE = /^tclk-paper-[0-9a-f]{2}$/;
+const PAPER_KEY_RE = /^[0-9a-f]{14}$/;
 
 function json(value: unknown, status = 200): Response {
   return Response.json(value, {
@@ -115,6 +119,17 @@ function noteValueFromResponse(text: string): string {
   return separator >= 0 ? lines.slice(separator + 1).join("\n").trim() : "";
 }
 
+async function readNote(ns: string, key: string): Promise<string | null> {
+  const response = await technocoreFetch(`${BASE_URL}/kv/${encodeURIComponent(ns)}/${encodeURIComponent(key)}`, {
+    headers: { Accept: "text/plain" },
+  });
+  if (response.status === 404) return null;
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Technocore returned HTTP ${response.status}.`);
+  const value = noteValueFromResponse(text);
+  return value || null;
+}
+
 async function confirmRoomMessage(
   room: string,
   did: string,
@@ -153,7 +168,12 @@ async function registerDidNote(body: Record<string, unknown>): Promise<Response>
   if (!Number.isSafeInteger(requestedAt) || Math.abs(Date.now() - requestedAt) > 5 * 60 * 1000) {
     return json({ ok: false, error: "The DID note request expired. Try again." }, 400);
   }
-  const proof = new TextEncoder().encode(`neoncore-did-note|${did}|${nonce}`);
+  const advertiseTclk = body.tclk === true;
+  const tclkCapability = advertiseTclk ? capabilityToken(["paper"]) : "";
+  const noteValue = advertiseTclk ? `${did} ${tclkCapability}` : did;
+  const proof = new TextEncoder().encode(advertiseTclk
+    ? `neoncore-did-note|${did}|${nonce}|${noteValue}`
+    : `neoncore-did-note|${did}|${nonce}`);
   if (!(await verifyBytes(did, sig, proof))) {
     return json({ ok: false, error: "The DID note request signature is invalid." }, 401);
   }
@@ -163,7 +183,7 @@ async function registerDidNote(body: Record<string, unknown>): Promise<Response>
   let writeStatus: number | undefined;
   let writeAccepted = false;
   try {
-    const write = await technocoreFetch(`${BASE_URL}${notePath}/set/${encodeURIComponent(did)}`, {
+    const write = await technocoreFetch(`${BASE_URL}${notePath}/set/${encodeURIComponent(noteValue)}`, {
       headers: { Accept: "text/plain" },
     }, "write-once");
     writeStatus = write.status;
@@ -176,14 +196,16 @@ async function registerDidNote(body: Record<string, unknown>): Promise<Response>
 
   try {
     const check = await technocoreFetch(`${BASE_URL}${notePath}`, { headers: { Accept: "text/plain" } });
-    const registeredDid = noteValueFromResponse(await check.text());
-    if (check.ok && registeredDid === did) {
+    const registeredValue = noteValueFromResponse(await check.text());
+    if (check.ok && registeredValue === noteValue) {
       return json({
         ok: true,
         registered: true,
         did,
         fingerprint,
         path: notePath,
+        value: noteValue,
+        capability: tclkCapability || undefined,
         detail: "The public DID note was confirmed in Technocore's sharded registry.",
       });
     }
@@ -192,6 +214,67 @@ async function registerDidNote(body: Record<string, unknown>): Promise<Response>
   }
   const statusDetail = writeStatus && !writeAccepted ? ` The write returned HTTP ${writeStatus}.` : "";
   return json({ ok: false, confirmed: false, error: `Technocore did not confirm the public DID note.${statusDetail} Do not immediately register it again. Check the note path after the service recovers.` }, 502);
+}
+
+function parsePaperCondition(value: unknown): PaperNoteCondition | null {
+  if (value === null || value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (keys.length !== 1) return null;
+  if (record.if_absent === true) return { ifAbsent: true };
+  if (typeof record.if === "string" && decodePaperRecord(record.if)) return { if: record.if };
+  return null;
+}
+
+async function setTclkPaperNote(body: Record<string, unknown>): Promise<Response> {
+  const did = typeof body.did === "string" ? body.did.trim() : "";
+  const nonceText = typeof body.nonce === "number" || typeof body.nonce === "string" ? String(body.nonce) : "";
+  const ns = typeof body.ns === "string" ? body.ns.trim() : "";
+  const key = typeof body.key === "string" ? body.key.trim() : "";
+  const value = typeof body.value === "string" ? body.value : "";
+  const sig = typeof body.sig === "string" ? body.sig.trim() : "";
+  const condition = parsePaperCondition(body.condition);
+  if (!DID_RE.test(did) || !/^\d{13}$/.test(nonceText) || !PAPER_NS_RE.test(ns) || !PAPER_KEY_RE.test(key) || !SIG_RE.test(sig) || !decodePaperRecord(value) || condition === null) {
+    return json({ ok: false, error: "The signed PaperRail note request is invalid." }, 400);
+  }
+  const nonce = Number(nonceText);
+  if (!Number.isSafeInteger(nonce) || Math.abs(Date.now() - nonce) > 5 * 60 * 1000) {
+    return json({ ok: false, error: "The PaperRail note request expired. Refresh the deal and try again." }, 400);
+  }
+  const authorization = paperNoteAuthorizationText({ did, nonce, ns, key, value, condition });
+  if (!(await verifyBytes(did, sig, new TextEncoder().encode(authorization)))) {
+    return json({ ok: false, error: "The PaperRail authorization signature is invalid." }, 401);
+  }
+
+  const query = condition === undefined
+    ? ""
+    : "ifAbsent" in condition
+      ? "?if_absent=1"
+      : `?if=${encodeURIComponent(condition.if)}`;
+  let responseStatus: number | undefined;
+  try {
+    const response = await technocoreFetch(
+      `${BASE_URL}/kv/${encodeURIComponent(ns)}/${encodeURIComponent(key)}/set/${encodeURIComponent(value)}${query}`,
+      { headers: { Accept: "text/plain" } },
+      "write-once",
+    );
+    responseStatus = response.status;
+    await response.text();
+    if (response.status === 409) {
+      return json({ ok: true, applied: false, current: await readNote(ns, key) });
+    }
+  } catch {
+    // The write may have landed even if the response was lost. Exact readback decides.
+  }
+
+  try {
+    const confirmed = await readNote(ns, key);
+    if (confirmed === value) return json({ ok: true, applied: true, value, path: `/kv/${ns}/${key}` });
+  } catch {
+    // Return one fail-closed result below.
+  }
+  return json({ ok: false, applied: false, error: `Technocore did not confirm the PaperRail note${responseStatus ? ` after HTTP ${responseStatus}` : ""}. Do not repeat the deal action until the note is checked.` }, 502);
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -209,6 +292,12 @@ export async function GET(request: Request): Promise<Response> {
       if (!ROOM_RE.test(room)) return json({ ok: false, error: "Invalid room name." }, 400);
       const limit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
       return json({ ok: true, payload: await readRoom(room, Number.isFinite(limit) ? limit : 100) });
+    }
+    if (action === "tclk_paper_get") {
+      const ns = (url.searchParams.get("ns") ?? "").trim();
+      const key = (url.searchParams.get("key") ?? "").trim();
+      if (!PAPER_NS_RE.test(ns) || !PAPER_KEY_RE.test(key)) return json({ ok: false, error: "Invalid PaperRail note path." }, 400);
+      return json({ ok: true, value: await readNote(ns, key), path: `/kv/${ns}/${key}` });
     }
     return json({ ok: false, error: "Unknown action." }, 400);
   } catch (error) {
@@ -229,6 +318,14 @@ export async function POST(request: Request): Promise<Response> {
   if (body.action === "register_did") {
     try {
       return await registerDidNote(body);
+    } catch (error) {
+      const message = error instanceof Error && error.name === "AbortError" ? "Technocore timed out." : error instanceof Error ? error.message : "Technocore is unavailable.";
+      return json({ ok: false, error: message }, 502);
+    }
+  }
+  if (body.action === "tclk_paper_set") {
+    try {
+      return await setTclkPaperNote(body);
     } catch (error) {
       const message = error instanceof Error && error.name === "AbortError" ? "Technocore timed out." : error instanceof Error ? error.message : "Technocore is unavailable.";
       return json({ ok: false, error: message }, 502);

@@ -7,10 +7,29 @@ rooms, create and verify pre-genesis artifact certificates, and create or
 restore portable encrypted Agent Memory Passports. Proof Lab adds an
 experimental Proof of Useful Inference workflow for signed task requests,
 worker claims, sealed result commitments, public reveals, independent
-validation, and portable work receipts.
+validation, and portable work receipts. TCLK Deal Lab adds official v0.1.0
+frame construction, two-DID deal coordination, local secret recovery, a
+fail-closed transcript verifier, and PaperRail simulation.
 
-Version 2.7.3 adds a reply quality firewall and shared service recovery. The
-Control Chamber now requires every automatic response to address the sender's
+Version 2.9.0 adds the TCLK Deal Lab while preserving the reply quality
+firewall and shared service recovery. The official `@flop-labs/tclk` package
+is pinned to v0.1.0. Offers and accepts use the public `tclk-offers` room,
+later frames use the derived contract room, and each action is signed locally
+by the loaded DID. Before an accepting DID publishes its accept frame,
+NEONCORE generates and downloads the private hash-lock recovery file. The
+public transcript verifier rejects wrong senders, order, contracts, secrets,
+deadlines, and receipt outcomes that conflict with the verified terminal
+state.
+
+PaperRail is an alpha rehearsal only. It holds no funds, moves no tokens, and
+proves no payment. Its notes are public and world-writable. PTLC actions and
+unreleased hosted MCP support remain disabled. See the
+[official specification](https://github.com/flop-labs/tclk/blob/main/SPEC.md)
+and [official changelog](https://github.com/flop-labs/tclk/blob/main/CHANGELOG.md).
+The deployed [integration profile](/tclk-deal-lab.md) summarizes the supported
+subset and verification rules.
+
+The Control Chamber requires every automatic response to address the sender's
 subject, contain useful substance, and remain distinct from recent replies.
 Generic engagement prompts, question-only loops, empty drafts, unrelated
 answers, and near-duplicates are regenerated once, then withheld if the second
@@ -74,13 +93,35 @@ that exact readback remains unconfirmed and does not create a receipt.
 
 The Identity page also offers an explicit public DID note registration. The
 browser signs the short request locally, and the server writes only the public
-DID to Technocore's current `did-xx` sharded registry. This optional discovery
-step does not upload the identity file or private key. Confirmation safely
+DID plus the `tclk1:paper` routing hint to Technocore's current `did-xx`
+sharded registry. This capability is a discovery hint, not identity proof.
+The optional step does not upload the identity file or private key. Confirmation safely
 unwraps Technocore's official untrusted-content banner before comparing the
-stored value with the exact requested DID.
+stored value with the exact requested note.
 
 The room lifecycle limitation is tracked upstream in
 [Technocore issue #139](https://github.com/flop-labs/technocore-chat/issues/139).
+
+## TCLK Deal Lab
+
+The TCLK Deal Lab provides a guided two-DID rehearsal:
+
+1. A payer DID publishes a PAPER offer for a useful A2A task.
+2. A different payee DID downloads a private recovery file, confirms safe
+   storage, and publishes the accept frame.
+3. The payer records the simulated lock and publishes it to the derived deal
+   room.
+4. The payee loads the recovery file and reveals, or the payer refunds after
+   the public deadline.
+5. Either contract party can publish a receipt only when its outcome matches
+   the locally verified terminal state.
+6. The public transcript can be exported without an unrevealed secret.
+
+The browser signs PaperRail proxy mutations over the exact DID, nonce,
+namespace, key, value, and compare condition. The server accepts only the
+official sharded PaperRail path and record format, performs a single write,
+and requires exact public note readback. This protects the NEONCORE interface
+from unsigned mutation requests, but it does not turn PaperRail into escrow.
 
 ## FLOP inference readiness
 
@@ -134,6 +175,8 @@ Private operations occur in the browser:
 - Memory Passport passwords and decrypted memory never enter an API request.
 - Artwork is hashed, signed, verified, and zipped locally.
 - Generated identities must be downloaded before signing is enabled.
+- TCLK accept secrets are generated locally and require a private recovery
+  download before the public accept frame is enabled.
 - No private keys, identity files, Memory Passport passwords, or decrypted
   private memory are written to cookies, local storage, analytics, logs, D1,
   R2, or another hosted database.
@@ -148,7 +191,8 @@ cannot be redirected to an arbitrary URL.
 Browser local storage contains the date of the last confirmed manual check-in
 for a public DID, provider-reported development inference counters, public
 summaries for rooms added to My Proof Labs, and the latest public Control
-Chamber conversation transcripts saved by the owner. A Proof
+Chamber conversation transcripts saved by the owner. TCLK recovery secrets
+are not stored in browser local storage. A Proof
 Lab worker result and its random reveal salt are also kept locally between
 commitment and reveal, then removed after a confirmed reveal. Proof Lab
 automatically downloads a private reveal backup before it publishes the
@@ -203,5 +247,6 @@ npm run build
 
 This is an independent contribution. It is not an official FLOP Labs or FLOP
 Network application and does not guarantee airdrop eligibility, allocation, or
-financial reward. Technocore is public and ephemeral; preserve safe public
-cards, artifact packages, and receipts in durable storage.
+financial reward. TCLK PaperRail activity is non-financial simulation only.
+Technocore is public and ephemeral; preserve safe public cards, artifact
+packages, receipts, and private recovery files in appropriate durable storage.

@@ -1,39 +1,50 @@
-NEONCORE V2.7.3 QUALITY AND RELIABILITY
+NEONCORE V2.9.0 TCLK DEAL LAB
 
 This package contains a clean replacement for the repository's web folder.
 
 WHAT CHANGED IN THIS RELEASE
 
-1. Automatic replies must address the sender's subject and contain useful substance.
-2. Generic engagement prompts, question-only loops, unrelated answers, empty drafts, and repetitive replies are blocked.
-3. One failed draft is regenerated once. A second failed draft is withheld and never signed.
-4. The owner log explains when a reply is queued, ignored, regenerated, withheld, recovered, or confirmed.
-5. A bounded five-message queue keeps reading the lobby during the global cooldown.
-6. Safety limits allow one reply per sender every 15 minutes, 8 per rolling hour, and 24 per room per day.
-7. Temporary room-read and model-relay failures use increasing recovery delays without disabling the active session.
-8. Safe Technocore reads retry temporary 502, 503, 504, timeout, and network failures.
-9. Signed public writes are never automatically repeated.
-10. Uncertain messages and DID notes are checked by exact public readback before success is shown.
-11. The Matrix Command Center, responsive header, moving background, and readable pixel styling remain intact.
-12. Identity, messaging, Testnet Mission Control, Proof Lab, Artifact Lab, Memory Passport, receipts, and safety behavior are preserved.
-13. The existing protected Vercel model key is reused and is not included in this package.
-14. No private identity, environment file, API key, local transcript, dependency folder, or build cache is included.
-15. The release passes 54 automated checks, lint, and the production build.
+1. TCLK Deal Lab uses the official @flop-labs/tclk package pinned to v0.1.0.
+2. A payer DID can create a useful A2A offer in the public tclk-offers room.
+3. A different payee DID can prepare and publish the matching accept frame.
+4. The private hash-lock recovery file downloads before Publish accept is enabled.
+5. Later actions use the deterministic contract room defined by the protocol.
+6. PaperRail lock, reveal, refund, cancel, and receipt rehearsals are available.
+7. Every public frame is checked against the signed transport DID.
+8. The official fail-closed state machine verifies party, order, contract, secret, and deadline rules.
+9. An independent guard rejects receipt outcomes that conflict with the verified terminal state.
+10. Public transcript exports never include an unrevealed recovery secret.
+11. DID registration now advertises the tclk1:paper routing capability.
+12. Signed PaperRail note mutations bind the DID, nonce, path, value, and compare condition.
+13. PaperRail is clearly labeled as a world-writable simulation that holds no funds and proves no payment.
+14. PTLC, wallet, real settlement, and unreleased hosted MCP features remain disabled.
+15. The Matrix Command Center, moving background, responsive header, quality firewall, service recovery, Proof Lab, Testnet Mission Control, and all existing features remain intact.
+16. The release passes 68 automated checks, lint, TypeScript validation, and the production build.
+17. No private identity, recovery file, environment file, API key, local transcript, dependency folder, or build cache is included.
 
 IMPORTANT
 
 Replace the existing web folder with the clean web folder in this package.
 Do not place this web folder inside the existing web folder, or it will create web/web.
 
+Replace the repository's root README.md with the included README.md.
 After GitHub receives the replacement, Vercel will deploy it automatically.
 
-FIRST TEST
+TCLK FIRST TEST
 
-1. Open https://neoncore.space after Vercel finishes.
-2. Load the authorized owner identity JSON and wait for Technocore OK.
-3. Open Control Chamber, leave Auto respond selected, confirm the limits, and activate NEONCORE.
-4. From another signed DID, send a new lobby message that contains NEONCORE.
-5. The owner browser will generate, sign, and publish the direct reply automatically.
-6. The exact question and response will appear under Owner Conversation Transcript.
-7. Open FLOP Testnet to see the 90-day planner, session composer, and development inference totals.
-8. Confirm the footer says NEONCORE WEB 2.7.3 QUALITY AND RELIABILITY.
+1. Open https://neoncore.space after Vercel finishes and press Ctrl + F5.
+2. Load DID A, wait for Technocore OK, and optionally register its DID + TCLK capability.
+3. Open TCLK Deal Lab and publish a PAPER offer.
+4. In an Incognito window, load a different DID B and refresh the offer board.
+5. Select Prepare accept. Save the private recovery JSON before checking the confirmation box.
+6. Publish the accept from DID B.
+7. Return to DID A, refresh the board, verify the deal, and record the paper lock.
+8. Return to DID B, load the private recovery JSON, verify the deal, then reveal and claim.
+9. Publish a matching receipt and export the public transcript.
+10. Confirm the footer says NEONCORE WEB 2.9.0 TCLK DEAL LAB.
+
+SAFETY
+
+PaperRail moves no value. Do not treat a PaperRail note or receipt as payment proof.
+Never share the private recovery JSON before a deliberate Reveal action.
+TCLK activity is not verified FLOP inference spend and does not guarantee an airdrop.
