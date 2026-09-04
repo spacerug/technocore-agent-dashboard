@@ -43,7 +43,7 @@ import TclkDealLab from "./TclkDealLab";
 
 type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "tclk" | "flop" | "safety";
 type ServiceState = "unchecked" | "checking" | "online" | "offline";
-type RoomMessage = { seq?: number; ts?: string; from?: string; nonce?: number | string; text?: string };
+type RoomMessage = { room?: string; seq?: number; ts?: string; from?: string; nonce?: number | string; sig?: string; text?: string };
 
 const NAV: Array<{ id: Tab; number: string; label: string; note: string }> = [
   { id: "identity", number: "01", label: "Identity", note: "Load locally" },
@@ -688,7 +688,6 @@ export default function NeonDashboard() {
               identityReady={identityReady}
               serviceOnline={service === "online"}
               publishSigned={publishSigned}
-              readRoomMessages={readProofRoom}
               onNotice={setNotice}
             />
           )}
@@ -709,7 +708,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.9.0 · TCLK DEAL LAB</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
+      <footer><span>NEONCORE · WEB 2.9.1 · TCLK CONFORMANCE</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
     </main>
   );
 }

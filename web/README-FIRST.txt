@@ -1,36 +1,35 @@
-NEONCORE V2.5.2 MATRIX CONSOLE
+NEONCORE V2.9.1 TCLK CONFORMANCE
 
-This package contains a clean replacement for the repository's web folder.
+This is the active Next.js application for the NEONCORE browser console.
 
-WHAT CHANGED IN THIS RELEASE
+WHAT CHANGED
 
-1. The Room Reader's Only my DID filter now uses a large dedicated pixel toggle.
-2. Checked and unchecked states are visually distinct and no longer collapse into a thin native checkbox.
-3. The toggle includes visible hover and keyboard-focus states.
-4. A moving Matrix-style code-rain layer now runs behind the application.
-5. A permanent dark veil keeps all panels, messages, DIDs, and controls readable.
-6. The animation uses a lightweight canvas and reduced frame rate.
-7. Reduced-motion browser settings show a static Matrix frame instead of continuous movement.
-8. Mobile layouts keep the background restrained and the DID control readable.
-9. No external font service, image dependency, or tracking dependency was added.
-10. All identity, Control Chamber, FLOP Readiness, Proof Lab, Memory Passport, messaging, and receipt behavior is preserved.
-11. Public DID registration now confirms Technocore note values even when the official safety banner wraps the response.
-12. The release passes the expanded automated test suite, lint, and production build.
+1. The official @flop-labs/tclk dependency remains pinned to v0.1.0.
+2. Deal Lab reads the complete Technocore /export JSONL history for audits.
+3. Room, sequence, timestamp, sender, nonce, signature, and exact text remain bound together.
+4. Ed25519 record signatures are verified before a frame can advance state.
+5. Offer and accept frames must appear in tclk-offers in append order.
+6. Later frames must appear in the deterministic contract room.
+7. PaperRail aliases normalize to the canonical paper rail.
+8. Locks posted after the refund deadline are rejected.
+9. Reveal, refund, and receipt rail references must match the verified lock.
+10. Either contract party can publish a state-neutral heartbeat while accepted or locked.
+11. One malformed export record fails the complete audit.
+12. PaperRail still holds no funds, moves no tokens, and proves no payment.
+13. PTLC, wallets, real settlement, and unreleased hosted MCP support remain disabled.
+14. All 76 automated checks, lint, TypeScript validation, and the production build pass.
 
-IMPORTANT
+DEPLOYMENT
 
-Replace the existing web folder with the clean web folder in this package.
-Do not place this web folder inside the existing web folder, or it will create web/web.
+Use this directory as the Vercel project root. Do not place it inside another web folder.
+Do not upload node_modules, .next, tsconfig.tsbuildinfo, environment files, API keys,
+identity files, private recovery files, or the old duplicate web/web folder.
 
-After GitHub receives the replacement, Vercel will deploy it automatically.
+After deployment, press Ctrl + F5 and confirm the footer says:
 
-FIRST TEST
+NEONCORE WEB 2.9.1 TCLK CONFORMANCE
 
-1. Open https://neoncore.space after Vercel finishes.
-2. Load the authorized owner identity JSON and wait for Technocore OK.
-3. Open Control Chamber, leave Auto respond selected, confirm the limits, and activate NEONCORE.
-4. From another signed DID, send a new lobby message that contains NEONCORE.
-5. The owner browser will generate, sign, and publish the direct reply automatically.
-6. The exact question and response will appear under Owner Conversation Transcript.
-7. Open FLOP Readiness to see the development inference totals. They must remain clearly labeled as not FLOP testnet spend.
-8. Confirm the footer says NEONCORE WEB 2.5.2 MATRIX CONSOLE.
+SAFETY
+
+Never share the private TCLK recovery JSON before a deliberate Reveal action.
+TCLK activity is not verified FLOP inference spend and does not guarantee an airdrop.

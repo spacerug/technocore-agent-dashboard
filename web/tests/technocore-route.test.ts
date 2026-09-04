@@ -276,6 +276,54 @@ test("reads a wrapped PaperRail note through the bounded proxy", async (t) => {
   assert.equal(payload.path, "/kv/tclk-paper-ab/0123456789cdef");
 });
 
+test("returns the complete byte-exact Technocore export for TCLK audits", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const exactNonce = "900719925474099300001";
+  const rows = [
+    { seq: 1, ts: "2026-09-03T12:00:00Z", from: DID, nonce: exactNonce, sig: SIG, text: "tclk1 exact text" },
+    { seq: 2, ts: "2026-09-03T12:00:01Z", from: DID, nonce: NONCE, sig: SIG, text: "second exact line" },
+  ];
+  let requestedUrl = "";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    requestedUrl = String(input);
+    return new Response(`${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, {
+      headers: { "Content-Type": "application/x-ndjson" },
+    });
+  }) as typeof fetch;
+
+  const response = await GET(new Request("https://neoncore.space/api/technocore?action=tclk_export&room=tclk-offers"));
+  const result = (await response.json()) as { payload: { source: string; complete: boolean; messages: Array<Record<string, unknown>>; last_seq: number } };
+
+  assert.equal(response.status, 200);
+  assert.match(requestedUrl, /\/r\/tclk-offers\/export$/);
+  assert.equal(result.payload.source, "full-export");
+  assert.equal(result.payload.complete, true);
+  assert.equal(result.payload.last_seq, 2);
+  assert.equal(result.payload.messages[0].room, "tclk-offers");
+  assert.equal(result.payload.messages[0].nonce, exactNonce);
+  assert.equal(result.payload.messages[0].text, "tclk1 exact text");
+});
+
+test("fails the entire TCLK export when any JSONL record is malformed", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = (async () => new Response(
+    `${JSON.stringify({ seq: 1, ts: "2026-09-03T12:00:00Z", from: DID, nonce: NONCE, sig: SIG, text: "valid envelope" })}\nnot-json\n`,
+  )) as typeof fetch;
+
+  const response = await GET(new Request("https://neoncore.space/api/technocore?action=tclk_export&room=tclk-offers"));
+  const payload = await response.json();
+
+  assert.equal(response.status, 502);
+  assert.match(JSON.stringify(payload), /line 2 is not valid JSON/i);
+  assert.doesNotMatch(JSON.stringify(payload), /valid envelope/);
+});
+
 test("applies a locally signed PaperRail note once and requires exact readback", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {

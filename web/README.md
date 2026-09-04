@@ -11,15 +11,16 @@ validation, and portable work receipts. TCLK Deal Lab adds official v0.1.0
 frame construction, two-DID deal coordination, local secret recovery, a
 fail-closed transcript verifier, and PaperRail simulation.
 
-Version 2.9.0 adds the TCLK Deal Lab while preserving the reply quality
-firewall and shared service recovery. The official `@flop-labs/tclk` package
-is pinned to v0.1.0. Offers and accepts use the public `tclk-offers` room,
-later frames use the derived contract room, and each action is signed locally
-by the loaded DID. Before an accepting DID publishes its accept frame,
-NEONCORE generates and downloads the private hash-lock recovery file. The
-public transcript verifier rejects wrong senders, order, contracts, secrets,
-deadlines, and receipt outcomes that conflict with the verified terminal
-state.
+Version 2.9.1 keeps the official `@flop-labs/tclk` package pinned to v0.1.0
+and adds isolated compatibility guards for the protocol work documented on
+September 3, 2026. Offers and accepts use the public `tclk-offers` room, later
+frames use the derived contract room, and each action is signed locally by the
+loaded DID. Before an accepting DID publishes its accept frame, NEONCORE
+generates and downloads the private hash-lock recovery file. Deal Lab reads
+complete room exports and authenticates the room, sequence, timestamp, sender,
+nonce, signature, and exact frame text before applying state. It also supports
+state-neutral heartbeats, canonical PaperRail aliases, reveal and refund rail
+references, expired-lock rejection, and strict terminal receipt checks.
 
 PaperRail is an alpha rehearsal only. It holds no funds, moves no tokens, and
 proves no payment. Its notes are public and world-writable. PTLC actions and
@@ -122,6 +123,12 @@ namespace, key, value, and compare condition. The server accepts only the
 official sharded PaperRail path and record format, performs a single write,
 and requires exact public note readback. This protects the NEONCORE interface
 from unsigned mutation requests, but it does not turn PaperRail into escrow.
+
+Transcript reads use Technocore's complete `/export` JSONL history. One
+malformed export record fails the read instead of allowing a partial audit.
+Every signed record is bound to its actual room and sender. The compatibility
+layer remains separate from the official v0.1.0 dependency until FLOP Labs
+publishes a newer tagged package.
 
 ## FLOP inference readiness
 

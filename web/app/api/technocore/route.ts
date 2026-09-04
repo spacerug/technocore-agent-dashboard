@@ -9,6 +9,7 @@ const DID_RE = /^did:key:z[1-9A-HJ-NP-Za-km-z]{40,100}$/;
 const SIG_RE = /^[A-Za-z0-9_-]{80,100}$/;
 const PAPER_NS_RE = /^tclk-paper-[0-9a-f]{2}$/;
 const PAPER_KEY_RE = /^[0-9a-f]{14}$/;
+const MAX_TCLK_EXPORT_CHARS = 6 * 1024 * 1024;
 
 function json(value: unknown, status = 200): Response {
   return Response.json(value, {
@@ -100,6 +101,46 @@ async function readRoom(room: string, limit = 100, since?: number): Promise<Reco
     throw new Error("Technocore returned an unexpected room response.");
   }
   return payload as Record<string, unknown>;
+}
+
+async function readRoomExport(room: string): Promise<Record<string, unknown>> {
+  const response = await technocoreFetch(`${BASE_URL}/r/${encodeURIComponent(room)}/export`, {
+    headers: { Accept: "application/x-ndjson, application/json, text/plain" },
+  });
+  const body = await response.text();
+  if (!response.ok) throw new Error(`Technocore export returned HTTP ${response.status}.`);
+  if (body.length > MAX_TCLK_EXPORT_CHARS) throw new Error("Technocore room export exceeds NEONCORE's bounded audit limit.");
+
+  const messages: Array<Record<string, unknown>> = [];
+  for (const [index, line] of body.split("\n").entries()) {
+    if (!line.trim()) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      throw new Error(`Technocore export line ${index + 1} is not valid JSON.`);
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error(`Technocore export line ${index + 1} is not a message object.`);
+    }
+    const message = parsed as Record<string, unknown>;
+    if (!Number.isSafeInteger(message.seq) || Number(message.seq) < 0 || typeof message.ts !== "string" || typeof message.from !== "string" || typeof message.text !== "string") {
+      throw new Error(`Technocore export line ${index + 1} has a malformed message envelope.`);
+    }
+    if (message.nonce !== undefined && message.nonce !== null && typeof message.nonce !== "string" && !Number.isSafeInteger(message.nonce)) {
+      throw new Error(`Technocore export line ${index + 1} has a malformed nonce.`);
+    }
+    if (message.sig !== undefined && message.sig !== null && typeof message.sig !== "string") {
+      throw new Error(`Technocore export line ${index + 1} has a malformed signature.`);
+    }
+    messages.push({ ...message, room });
+  }
+  return {
+    source: "full-export",
+    complete: true,
+    messages,
+    last_seq: messages.length ? messages[messages.length - 1].seq : 0,
+  };
 }
 
 async function didFingerprint(did: string): Promise<string> {
@@ -292,6 +333,11 @@ export async function GET(request: Request): Promise<Response> {
       if (!ROOM_RE.test(room)) return json({ ok: false, error: "Invalid room name." }, 400);
       const limit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
       return json({ ok: true, payload: await readRoom(room, Number.isFinite(limit) ? limit : 100) });
+    }
+    if (action === "tclk_export") {
+      const room = (url.searchParams.get("room") ?? "").trim();
+      if (!ROOM_RE.test(room)) return json({ ok: false, error: "Invalid TCLK export room name." }, 400);
+      return json({ ok: true, payload: await readRoomExport(room) });
     }
     if (action === "tclk_paper_get") {
       const ns = (url.searchParams.get("ns") ?? "").trim();

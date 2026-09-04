@@ -4,7 +4,6 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   PaperRail,
   dealRoom,
-  encodeFrame,
   lockTerms,
   validateFrame,
   verifySecret,
@@ -34,6 +33,11 @@ import {
   type TclkRecovery,
   type TclkRoomMessage,
 } from "../lib/tclk-deal";
+import {
+  encodeTclkCompatibleFrame,
+  makeTclkHeartbeat,
+  withTclkRailRef,
+} from "../lib/tclk-compat";
 
 type Notice = { tone: "good" | "warn" | "bad"; text: string };
 
@@ -42,7 +46,6 @@ type Props = {
   identityReady: boolean;
   serviceOnline: boolean;
   publishSigned: (room: string, text: string) => Promise<unknown>;
-  readRoomMessages: (room: string) => Promise<TclkRoomMessage[]>;
   onNotice: (notice: Notice) => void;
 };
 
@@ -121,7 +124,6 @@ export default function TclkDealLab({
   identityReady,
   serviceOnline,
   publishSigned,
-  readRoomMessages,
   onNotice,
 }: Props) {
   const [board, setBoard] = useState<TclkBoardScan>(EMPTY_BOARD);
@@ -168,26 +170,33 @@ export default function TclkDealLab({
 
   async function readDealRoom(deal: TclkBoardDeal): Promise<TclkRoomMessage[]> {
     try {
-      return await readRoomMessages(deal.room);
+      return await readCompleteRoom(deal.room);
     } catch (error) {
       if (/404|not found/i.test(errorText(error))) return [];
       throw error;
     }
   }
 
+  async function readCompleteRoom(room: string): Promise<TclkRoomMessage[]> {
+    const response = await apiJson(`/api/technocore?action=tclk_export&room=${encodeURIComponent(room)}`);
+    const payload = response.payload as Record<string, unknown>;
+    if (payload.complete !== true || !Array.isArray(payload.messages)) throw new Error("Technocore did not return a complete room export.");
+    return payload.messages as TclkRoomMessage[];
+  }
+
   async function loadDealAudit(deal: TclkBoardDeal): Promise<TclkAudit> {
     const messages = await readDealRoom(deal);
-    const next = auditTclkDeal(deal, messages);
+    const next = await auditTclkDeal(deal, messages);
     setSelectedContract(deal.accept.frame.contract);
     setAudit(next);
     return next;
   }
 
   async function refreshBoard(targetContract = selectedContract): Promise<{ scan: TclkBoardScan; current: TclkAudit | null }> {
-    const messages = await readRoomMessages(TCLK_OFFER_ROOM);
-    const scan = scanTclkOfferBoard(messages);
+    const messages = await readCompleteRoom(TCLK_OFFER_ROOM);
+    const scan = await scanTclkOfferBoard(messages);
     setBoard(scan);
-    setBoardMeta(`${scan.offers.length} valid offer(s), ${scan.deals.length} accepted deal(s), ${scan.rejected.length} rejected TCLK frame(s).`);
+    setBoardMeta(`Complete export authenticated: ${scan.offers.length} valid offer(s), ${scan.deals.length} accepted deal(s), ${scan.rejected.length} rejected TCLK frame(s).`);
     const target = scan.deals.find((deal) => deal.accept.frame.contract === targetContract);
     const current = target ? await loadDealAudit(target) : null;
     if (!target && targetContract) {
@@ -209,7 +218,7 @@ export default function TclkDealLab({
         claimMinutes,
         refundMinutes,
       });
-      await publishSigned(TCLK_OFFER_ROOM, encodeFrame(offer));
+      await publishSigned(TCLK_OFFER_ROOM, encodeTclkCompatibleFrame(offer));
       await refreshBoard();
       onNotice({ tone: "good", text: `TCLK offer ${offer.id.slice(0, 18)}... was confirmed in ${TCLK_OFFER_ROOM}. It is a PaperRail simulation and moves no value.` });
     });
@@ -234,7 +243,7 @@ export default function TclkDealLab({
       if (!identity || !pendingAccept) throw new Error("Prepare an accept and its private recovery first.");
       if (!recoveryAcknowledged) throw new Error("Confirm that the private recovery file was saved before publishing accept.");
       if (identity.did !== pendingAccept.recovery.owner_did) throw new Error("The loaded DID does not own this prepared accept.");
-      await publishSigned(TCLK_OFFER_ROOM, encodeFrame(pendingAccept.accept));
+      await publishSigned(TCLK_OFFER_ROOM, encodeTclkCompatibleFrame(pendingAccept.accept));
       const contract = pendingAccept.accept.contract;
       setPendingAccept(null);
       setRecoveryAcknowledged(false);
@@ -262,12 +271,13 @@ export default function TclkDealLab({
       const { deal, current } = await currentVerifiedDeal();
       if (current.state.status !== "accepted") throw new Error(`The verified deal is ${current.state.status}, not accepted.`);
       if (current.state.payerDid !== identity.did) throw new Error("Only the payer DID can publish the lock.");
+      if (Date.now() >= current.state.offer.refundAfterMs) throw new Error("The refund window is already open. TCLK forbids creating a late lock.");
       const terms = lockTerms(current.state);
       const rail = new PaperRail(makePaperNoteStore(identity));
       const alreadyRecorded = await rail.verifyLock(terms, terms.contract);
       const ref = alreadyRecorded ? terms.contract : await rail.lock(terms);
       const frame = validateFrame({ type: "lock", from: identity.did, contract: terms.contract, rail: "paper", ref });
-      await publishSigned(deal.room, encodeFrame(frame));
+      await publishSigned(deal.room, encodeTclkCompatibleFrame(frame));
       await loadDealAudit(deal);
       onNotice({ tone: "good", text: "PaperRail lock rehearsal confirmed. This record holds no funds and proves no payment." });
     });
@@ -286,8 +296,10 @@ export default function TclkDealLab({
       if (!(record?.status === "claimed" && record.secret === loadedRecovery.preimage)) {
         await rail.claim(current.state.contract!, loadedRecovery.preimage);
       }
-      const frame = validateFrame({ type: "reveal", from: identity.did, contract: current.state.contract, secret: loadedRecovery.preimage });
-      await publishSigned(deal.room, encodeFrame(frame));
+      const legacyFrame = validateFrame({ type: "reveal", from: identity.did, contract: current.state.contract, secret: loadedRecovery.preimage });
+      if (legacyFrame.type !== "reveal") throw new Error("Could not create a valid TCLK reveal frame.");
+      const frame = withTclkRailRef(legacyFrame, current.state.railRef!);
+      await publishSigned(deal.room, encodeTclkCompatibleFrame(frame));
       await loadDealAudit(deal);
       onNotice({ tone: "good", text: "Reveal confirmed and the PaperRail rehearsal reached claimed. The revealed secret is now public by protocol design." });
     });
@@ -303,8 +315,10 @@ export default function TclkDealLab({
       const rail = new PaperRail(makePaperNoteStore(identity));
       const record = await rail.read(current.state.contract!);
       if (record?.status !== "refunded") await rail.refund(current.state.contract!);
-      const frame = validateFrame({ type: "refund", from: identity.did, contract: current.state.contract, reason: "PaperRail refund deadline reached" });
-      await publishSigned(deal.room, encodeFrame(frame));
+      const legacyFrame = validateFrame({ type: "refund", from: identity.did, contract: current.state.contract, reason: "PaperRail refund deadline reached" });
+      if (legacyFrame.type !== "refund") throw new Error("Could not create a valid TCLK refund frame.");
+      const frame = withTclkRailRef(legacyFrame, current.state.railRef!);
+      await publishSigned(deal.room, encodeTclkCompatibleFrame(frame));
       await loadDealAudit(deal);
       onNotice({ tone: "good", text: "Refund frame confirmed. PaperRail moved no value." });
     });
@@ -316,7 +330,7 @@ export default function TclkDealLab({
       const { deal, current } = await currentVerifiedDeal();
       if (current.state.status !== "proposed" && current.state.status !== "accepted") throw new Error(`A ${current.state.status} deal cannot be cancelled.`);
       const frame = validateFrame({ type: "cancel", from: identity.did, contract: current.state.contract, reason: "Cancelled by contract party" });
-      await publishSigned(deal.room, encodeFrame(frame));
+      await publishSigned(deal.room, encodeTclkCompatibleFrame(frame));
       await loadDealAudit(deal);
       onNotice({ tone: "good", text: "Cancellation confirmed in the public deal transcript." });
     });
@@ -327,9 +341,22 @@ export default function TclkDealLab({
       if (!identity) throw new Error("Load a contract party DID first.");
       const { deal, current } = await currentVerifiedDeal();
       const frame = receiptForVerifiedState(current.state, identity.did);
-      await publishSigned(deal.room, encodeFrame(frame));
+      await publishSigned(deal.room, encodeTclkCompatibleFrame(frame));
       await loadDealAudit(deal);
       onNotice({ tone: "good", text: `Receipt confirmed with outcome ${frame.outcome}. NEONCORE independently matched it to the terminal state.` });
+    });
+  }
+
+  async function publishHeartbeat(): Promise<void> {
+    await execute("Publishing authenticated TCLK heartbeat", async () => {
+      if (!identity) throw new Error("Load a contract party DID first.");
+      const { deal, current } = await currentVerifiedDeal();
+      if (current.state.status !== "accepted" && current.state.status !== "locked") throw new Error(`A heartbeat is not allowed while the deal is ${current.state.status}.`);
+      if (current.state.payerDid !== identity.did && current.state.payeeDid !== identity.did) throw new Error("Only a contract party can publish a heartbeat.");
+      const frame = makeTclkHeartbeat(identity.did, current.state.contract!, "NEONCORE deal session active");
+      await publishSigned(deal.room, encodeTclkCompatibleFrame(frame));
+      await loadDealAudit(deal);
+      onNotice({ tone: "good", text: "Authenticated heartbeat confirmed. It reports liveness only and does not change settlement state." });
     });
   }
 
@@ -357,6 +384,7 @@ export default function TclkDealLab({
   const canRefund = Boolean(identity && clockNow !== null && selectedState?.status === "locked" && selectedState.payerDid === identity.did && clockNow >= selectedState.offer.refundAfterMs);
   const canCancel = Boolean(identity && selectedState && ["proposed", "accepted"].includes(selectedState.status) && (selectedState.payerDid === identity.did || selectedState.payeeDid === identity.did));
   const canReceipt = Boolean(identity && selectedState && ["claimed", "refunded", "cancelled"].includes(selectedState.status) && (selectedState.payerDid === identity.did || selectedState.payeeDid === identity.did));
+  const canHeartbeat = Boolean(identity && selectedState && ["accepted", "locked"].includes(selectedState.status) && (selectedState.payerDid === identity.did || selectedState.payeeDid === identity.did));
 
   return <div className="page-grid tclk-page">
     <section className="tclk-alpha-banner wide" role="status">
@@ -368,7 +396,7 @@ export default function TclkDealLab({
     <div className="page-heading">
       <p className="eyebrow">STEP 08 / TECHNOCORE LOCK PROTOCOL</p>
       <h1>Rehearse verifiable agent deals before value rails arrive.</h1>
-      <p>Create signed offers, accept with a locally generated hash lock, fold the public transcript through the official fail-closed state machine, and export the result.</p>
+      <p>Create signed offers, accept with a locally generated hash lock, authenticate complete room records, fold the transcript fail closed, and export the result.</p>
     </div>
 
     <section className="panel wide tclk-protocol-panel">
@@ -380,6 +408,7 @@ export default function TclkDealLab({
         {["OFFER", "ACCEPT", "LOCK", "REVEAL OR REFUND", "RECEIPT"].map((step, index) => <div key={step}><span>{String(index + 1).padStart(2, "0")}</span><strong>{step}</strong></div>)}
       </div>
       <div className="status-line warn">Hash-lock PaperRail only. PTLC actions, hosted MCP dependency, wallets, and real settlement remain disabled.</div>
+      <div className="status-line good">SEPTEMBER 3 COMPATIBILITY GUARD: complete record signatures, room binding, canonical paper rail IDs, heartbeat validation, rail references, and late-lock rejection are active while the official package remains pinned.</div>
       <div className="button-row"><a className="button link-button" href={TCLK_SPEC_URL} target="_blank" rel="noreferrer">Official specification</a><a className="button link-button" href={TCLK_CHANGELOG_URL} target="_blank" rel="noreferrer">Official changelog</a></div>
     </section>
 
@@ -462,7 +491,7 @@ export default function TclkDealLab({
           <div><span>CLAIM BY</span><strong>{timeLabel(selectedState.offer.claimByMs)}</strong></div>
           <div><span>REFUND OPENS</span><strong>{timeLabel(selectedState.offer.refundAfterMs)}</strong></div>
         </div>
-        <div className={`status-line ${audit.rejected.length ? "warn" : "good"}`}><strong>RECEIPT OUTCOME GUARD:</strong> {audit.accepted.length} valid signed frame(s). {audit.rejected.length} conflicting or malformed frame(s) ignored. Receipt outcomes are checked independently against the terminal state.</div>
+        <div className={`status-line ${audit.rejected.length ? "warn" : "good"}`}><strong>AUTHENTICATED EXPORT:</strong> {audit.accepted.length} valid signed frame(s), including {audit.heartbeats.length} state-neutral heartbeat(s). {audit.rejected.length} conflicting or malformed frame(s) ignored. Room, sender, nonce, signature, timestamp, receipt outcome, rail, and rail reference are checked before state advances.</div>
         {audit.rejected.length > 0 && <details className="tclk-rejections"><summary>View rejected frame reasons</summary><ul>{audit.rejected.slice(0, 20).map((item, index) => <li key={`${item.seq ?? "x"}-${index}`}>SEQ {String(item.seq ?? "?")}: {item.reason}</li>)}</ul></details>}
         <div className="button-row"><button className="button" disabled={Boolean(busy)} onClick={() => void openDeal(selectedDeal)}>Refresh transcript</button><button className="button" onClick={downloadTranscript}>Export public transcript</button></div>
       </section>
@@ -475,6 +504,7 @@ export default function TclkDealLab({
           <button className="button primary" disabled={!canReveal || Boolean(busy)} onClick={publishReveal}>Payee: reveal and claim</button>
           <button className="button" disabled={!canRefund || Boolean(busy)} onClick={publishRefund}>Payer: refund after deadline</button>
           <button className="button" disabled={!canCancel || Boolean(busy)} onClick={publishCancel}>Either party: cancel before lock</button>
+          <button className="button" disabled={!canHeartbeat || Boolean(busy)} onClick={publishHeartbeat}>Either party: publish heartbeat</button>
           <button className="button" disabled={!canReceipt || Boolean(busy)} onClick={publishReceipt}>Publish matching receipt</button>
         </div>
         <div className="status-line muted">Disabled actions mean the loaded DID, verified state, deadline, or recovery file does not authorize that step.</div>
@@ -494,9 +524,10 @@ export default function TclkDealLab({
       <p className="eyebrow">SECURITY BOUNDARIES</p>
       <h2>What this alpha proves and what it does not</h2>
       <div className="limits-grid">
-        <p><strong>Signed coordination</strong>Frames are signed by each DID and read back from the named Technocore room.</p>
+        <p><strong>Complete record authentication</strong>Room, sequence, timestamp, sender, nonce, signature, and exact text stay together and are verified before a frame can advance state.</p>
         <p><strong>Deterministic state</strong>The official state machine rejects wrong parties, wrong order, wrong contracts, bad secrets, and invalid deadlines.</p>
         <p><strong>Public rooms</strong>Offer and deal transcripts are readable by strangers. A derived deal room is not confidential.</p>
+        <p><strong>State-neutral heartbeat</strong>Either party may prove recent activity while accepted or locked. A heartbeat never proves settlement or changes contract state.</p>
         <p><strong>No payment proof</strong>PaperRail notes are world-writable and hold nothing. They cannot prove funds moved.</p>
         <p><strong>No PTLC value flow</strong>The reference PTLC cryptography is unaudited and not Bitcoin compatible. NEONCORE keeps it disabled.</p>
         <p><strong>No airdrop promise</strong>A TCLK rehearsal is useful integration work, but it is not verified FLOP inference spend or guaranteed eligibility.</p>

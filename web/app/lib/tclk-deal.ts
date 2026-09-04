@@ -1,21 +1,28 @@
 import {
   OFFER_ROOM,
-  applyFrame,
   dealRoom,
-  encodeFrame,
   generateHashLock,
   makeAccept,
   makeOffer,
   openContract,
-  tryDecodeFrame,
   validateFrame,
   verifyHashPreimage,
   type AcceptFrame,
   type ContractState,
   type OfferFrame,
   type ReceiptFrame,
-  type TclkFrame,
 } from "@flop-labs/tclk";
+import {
+  applyTclkCompatibleFrame,
+  authenticateTclkRecord,
+  decodeTclkCompatibleFrame,
+  tclkOfferIncludesRail,
+  type TclkAuthenticatedRecord,
+  type TclkCompatibleFrame,
+  type TclkRoomMessage,
+} from "./tclk-compat";
+
+export type { TclkRoomMessage } from "./tclk-compat";
 
 export const TCLK_RELEASE = "0.1.0";
 export const TCLK_OFFER_ROOM = OFFER_ROOM;
@@ -24,23 +31,13 @@ export const TCLK_CHANGELOG_URL = "https://github.com/flop-labs/tclk/blob/main/C
 export const TCLK_RECOVERY_SCHEMA = "neoncore.tclk-recovery.v1";
 export const TCLK_EXPORT_SCHEMA = "neoncore.tclk-public-transcript.v1";
 
-export type TclkRoomMessage = {
-  seq?: number;
-  ts?: string;
-  from?: string;
-  nonce?: number | string;
-  text?: string;
-};
-
 export type TclkPublicFrame = {
-  frame: TclkFrame;
+  frame: TclkCompatibleFrame;
   message: TclkRoomMessage;
+  record: TclkAuthenticatedRecord;
 };
 
-export type TclkBoardOffer = {
-  frame: OfferFrame;
-  message: TclkRoomMessage;
-};
+export type TclkBoardOffer = TclkPublicFrame & { frame: OfferFrame };
 
 export type TclkBoardDeal = {
   offer: TclkBoardOffer;
@@ -57,6 +54,7 @@ export type TclkBoardScan = {
 export type TclkAudit = {
   state: ContractState;
   accepted: TclkPublicFrame[];
+  heartbeats: TclkPublicFrame[];
   rejected: Array<{ seq?: number; type?: string; reason: string }>;
   room: string;
 };
@@ -89,58 +87,57 @@ function sequence(message: TclkRoomMessage): number {
   return Number.isSafeInteger(message.seq) ? Number(message.seq) : Number.MAX_SAFE_INTEGER;
 }
 
-function messageTime(message: TclkRoomMessage, fallback: number): number {
-  const parsed = typeof message.ts === "string" ? Date.parse(message.ts) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function inspectSignedFrame(message: TclkRoomMessage):
+async function inspectSignedFrame(room: string, message: TclkRoomMessage): Promise<
   | { kind: "not-tclk" }
   | { kind: "invalid"; reason: string }
-  | { kind: "valid"; value: TclkPublicFrame } {
+  | { kind: "valid"; value: TclkPublicFrame }
+> {
   if (typeof message.text !== "string" || !message.text.startsWith("tclk1 ")) return { kind: "not-tclk" };
-  if (typeof message.from !== "string") return { kind: "invalid", reason: "TCLK frame is not from the signed DID lane." };
-  const frame = tryDecodeFrame(message.text);
-  if (!frame) return { kind: "invalid", reason: "Malformed or unsupported tclk/1 frame." };
-  if (frame.from !== message.from) return { kind: "invalid", reason: "Frame sender does not match the transport-verified DID." };
-  return { kind: "valid", value: { frame, message } };
+  let record: TclkAuthenticatedRecord;
+  try {
+    record = await authenticateTclkRecord(room, message);
+  } catch (error) {
+    return { kind: "invalid", reason: error instanceof Error ? error.message : "TCLK record authentication failed." };
+  }
+  const frame = decodeTclkCompatibleFrame(record.line);
+  if (!frame) return { kind: "invalid", reason: "Malformed, non-canonical, oversized, or unsupported tclk/1 frame." };
+  if (frame.from !== record.sender) return { kind: "invalid", reason: "Frame sender does not match the authenticated record sender." };
+  return { kind: "valid", value: { frame, message, record } };
 }
 
-export function scanTclkOfferBoard(messages: TclkRoomMessage[]): TclkBoardScan {
+export async function scanTclkOfferBoard(messages: TclkRoomMessage[]): Promise<TclkBoardScan> {
   const offers = new Map<string, TclkBoardOffer>();
-  const accepts: Array<TclkPublicFrame & { frame: AcceptFrame }> = [];
+  const deals: TclkBoardDeal[] = [];
   const rejected: TclkBoardScan["rejected"] = [];
   const ordered = [...messages].sort((left, right) => sequence(left) - sequence(right));
 
   for (const message of ordered) {
-    const inspected = inspectSignedFrame(message);
+    const inspected = await inspectSignedFrame(TCLK_OFFER_ROOM, message);
     if (inspected.kind === "not-tclk") continue;
     if (inspected.kind === "invalid") {
       rejected.push({ seq: message.seq, reason: inspected.reason });
       continue;
     }
     if (inspected.value.frame.type === "offer") {
-      offers.set(inspected.value.frame.id, { frame: inspected.value.frame, message });
+      if (!offers.has(inspected.value.frame.id)) {
+        offers.set(inspected.value.frame.id, { frame: inspected.value.frame, message, record: inspected.value.record });
+      }
     } else if (inspected.value.frame.type === "accept") {
-      accepts.push(inspected.value as TclkPublicFrame & { frame: AcceptFrame });
+      const accept = inspected.value as TclkPublicFrame & { frame: AcceptFrame };
+      const offer = offers.get(accept.frame.ref);
+      if (!offer) {
+        rejected.push({ seq: message.seq, reason: "Accept frame has no preceding authenticated offer in the complete board history." });
+        continue;
+      }
+      const step = applyTclkCompatibleFrame(openContract(offer.frame), accept.frame, accept.record.timestampMs);
+      if (!step.ok || !step.state.contract) {
+        rejected.push({ seq: message.seq, reason: step.reason ?? "Accept frame failed the TCLK state machine." });
+        continue;
+      }
+      deals.push({ offer, accept, room: dealRoom(step.state.contract) });
     } else {
       rejected.push({ seq: message.seq, reason: `${inspected.value.frame.type} does not belong in the public offer room.` });
     }
-  }
-
-  const deals: TclkBoardDeal[] = [];
-  for (const accept of accepts) {
-    const offer = offers.get(accept.frame.ref);
-    if (!offer) {
-      rejected.push({ seq: accept.message.seq, reason: "Accept frame references an offer that is not available in this room window." });
-      continue;
-    }
-    const step = applyFrame(openContract(offer.frame), accept.frame, messageTime(accept.message, Date.now()));
-    if (!step.ok || !step.state.contract) {
-      rejected.push({ seq: accept.message.seq, reason: step.reason ?? "Accept frame failed the TCLK state machine." });
-      continue;
-    }
-    deals.push({ offer, accept, room: dealRoom(step.state.contract) });
   }
 
   return {
@@ -150,18 +147,19 @@ export function scanTclkOfferBoard(messages: TclkRoomMessage[]): TclkBoardScan {
   };
 }
 
-export function auditTclkDeal(deal: TclkBoardDeal, messages: TclkRoomMessage[], fallbackNow = Date.now()): TclkAudit {
+export async function auditTclkDeal(deal: TclkBoardDeal, messages: TclkRoomMessage[]): Promise<TclkAudit> {
   let state = openContract(deal.offer.frame);
-  const accepted: TclkPublicFrame[] = [{ frame: deal.offer.frame, message: deal.offer.message }];
+  const accepted: TclkPublicFrame[] = [deal.offer];
+  const heartbeats: TclkPublicFrame[] = [];
   const rejected: TclkAudit["rejected"] = [];
-  const acceptStep = applyFrame(state, deal.accept.frame, messageTime(deal.accept.message, fallbackNow));
+  const acceptStep = applyTclkCompatibleFrame(state, deal.accept.frame, deal.accept.record.timestampMs);
   if (!acceptStep.ok) throw new Error(acceptStep.reason ?? "The selected accept frame is invalid.");
   state = acceptStep.state;
   accepted.push(deal.accept);
 
   const ordered = [...messages].sort((left, right) => sequence(left) - sequence(right));
   for (const message of ordered) {
-    const inspected = inspectSignedFrame(message);
+    const inspected = await inspectSignedFrame(deal.room, message);
     if (inspected.kind === "not-tclk") continue;
     if (inspected.kind === "invalid") {
       rejected.push({ seq: message.seq, reason: inspected.reason });
@@ -172,28 +170,21 @@ export function auditTclkDeal(deal: TclkBoardDeal, messages: TclkRoomMessage[], 
       rejected.push({ seq: message.seq, type: frame.type, reason: `${frame.type} belongs in ${TCLK_OFFER_ROOM}.` });
       continue;
     }
-    if (frame.contract !== state.contract) {
+    if ("contract" in frame && frame.contract !== state.contract) {
       rejected.push({ seq: message.seq, type: frame.type, reason: "Frame names a different contract." });
       continue;
     }
-    if (frame.type === "receipt" && frame.outcome !== state.status) {
-      rejected.push({
-        seq: message.seq,
-        type: frame.type,
-        reason: `Receipt claims ${frame.outcome}, but the verified terminal state is ${state.status}.`,
-      });
-      continue;
-    }
-    const step = applyFrame(state, frame, messageTime(message, fallbackNow));
+    const step = applyTclkCompatibleFrame(state, frame, inspected.value.record.timestampMs);
     if (!step.ok) {
       rejected.push({ seq: message.seq, type: frame.type, reason: step.reason ?? "Frame failed the TCLK state machine." });
       continue;
     }
     state = step.state;
     accepted.push(inspected.value);
+    if (frame.type === "heartbeat") heartbeats.push(inspected.value);
   }
 
-  return { state, accepted, rejected, room: deal.room };
+  return { state, accepted, heartbeats, rejected, room: deal.room };
 }
 
 export function createPaperOffer(from: string, input: PaperOfferInput, now = Date.now()): OfferFrame {
@@ -230,8 +221,8 @@ export function preparePaperAccept(offer: OfferFrame, ownerDid: string, now = Da
   recovery: TclkRecovery;
   recoveryText: string;
 } {
-  if (offer.lock !== "hash" || !offer.rails.includes("paper") || offer.asset !== "PAPER") {
-    throw new Error("NEONCORE v2.9.0 accepts only TCLK PaperRail hash-lock simulations.");
+  if (offer.lock !== "hash" || !tclkOfferIncludesRail(offer.rails, "paper") || offer.asset !== "PAPER") {
+    throw new Error("NEONCORE v2.9.1 accepts only TCLK PaperRail hash-lock simulations.");
   }
   if (offer.from === ownerDid) throw new Error("A second DID must accept this offer.");
   if (now >= offer.expiresMs) throw new Error("This offer has expired.");
@@ -299,13 +290,14 @@ export function tclkPublicExport(deal: TclkBoardDeal, audit: TclkAudit): string 
     deal_room: deal.room,
     contract_id: audit.state.contract,
     verified_status: audit.state.status,
-    frames: audit.accepted.map(({ frame, message }) => ({
-      room: frame.type === "offer" || frame.type === "accept" ? TCLK_OFFER_ROOM : deal.room,
-      seq: message.seq,
-      ts: message.ts,
-      transport_from: message.from,
-      nonce: message.nonce,
-      text: encodeFrame(frame),
+    frames: audit.accepted.map(({ record }) => ({
+      room: record.room,
+      seq: record.seq,
+      ts: new Date(record.timestampMs).toISOString(),
+      transport_from: record.sender,
+      nonce: record.nonce,
+      signature: record.signature,
+      text: record.line,
     })),
     rejected: audit.rejected,
     warning: "Public transcript only. PaperRail settles nothing and proves no payment.",
@@ -327,4 +319,3 @@ export function paperNoteAuthorizationText(input: {
       : `if:${input.condition.if}`;
   return `neoncore-tclk-paper|${input.did}|${input.nonce}|${input.ns}|${input.key}|${input.value}|${condition}`;
 }
-
