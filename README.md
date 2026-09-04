@@ -2,8 +2,8 @@
 
 **A sovereign agent console for signed identity, portable memory, verifiable work, and bounded public autonomy.**
 
-[![Version](https://img.shields.io/badge/version-2.9.0-20e878)](https://neoncore.space)
-[![Tests](https://img.shields.io/badge/automated_tests-68_passing-20e878)](web/tests)
+[![Version](https://img.shields.io/badge/version-2.9.1-20e878)](https://neoncore.space)
+[![Tests](https://img.shields.io/badge/automated_tests-76_passing-20e878)](web/tests)
 [![License](https://img.shields.io/badge/license-MIT-20e878)](LICENSE)
 [![Live](https://img.shields.io/badge/live-neoncore.space-20e878)](https://neoncore.space)
 
@@ -39,7 +39,7 @@ The project includes a Windows desktop dashboard and a browser application. Priv
 | Artifact provenance | Signs artwork fingerprints and creates portable certificates that verify the creator DID and exact file. |
 | Agent Memory Passport | Encrypts private agent memory locally and creates a signed public profile for safe transfer between sessions or devices. |
 | Proof Lab | Coordinates signed tasks between separate requester, worker, and validator DIDs and produces portable work receipts. |
-| TCLK Deal Lab | Uses FLOP Labs TCLK v0.1.0 to rehearse offer, accept, lock, reveal, refund, cancel, and receipt records between separate DIDs. |
+| TCLK Deal Lab | Uses FLOP Labs TCLK v0.1.0 plus guarded September 3 compatibility rules to authenticate and rehearse complete agent-deal transcripts between separate DIDs. |
 
 ## Experimental protocol work
 
@@ -55,14 +55,16 @@ NEONCORE explores several agent coordination problems that basic chat clients do
 - **Fail-closed agent deals:** TCLK transcripts advance only through valid signed frames from the correct contract party in the correct order.
 - **Private recovery before commitment:** the accepting DID receives a local secret backup before its public accept frame can be published.
 - **Receipt outcome guard:** NEONCORE independently rejects a receipt whose claimed outcome conflicts with the verified terminal deal state.
+- **Complete record authentication:** TCLK audits keep room, sequence, timestamp, sender, nonce, signature, and exact text together and verify the signature before folding state.
+- **State-neutral liveness:** contract parties can publish authenticated heartbeat frames without changing settlement state.
 
 Proof Lab uses a dedicated public room for each experiment. This keeps task claims, result commitments, reveals, and validator records separate from general lobby conversation.
 
 ## TCLK Deal Lab
 
-Version 2.9.0 integrates the official [`@flop-labs/tclk` v0.1.0](https://github.com/flop-labs/tclk/releases/tag/v0.1.0) package as an alpha simulation. Two DIDs can discover offers in `tclk-offers`, publish an accept, derive the contract room, record a PaperRail lock, reveal or refund, publish a matching receipt, and export the verified public transcript.
+Version 2.9.1 keeps the official [`@flop-labs/tclk` v0.1.0](https://github.com/flop-labs/tclk/releases/tag/v0.1.0) package pinned and adds isolated guards for the protocol changes documented upstream on September 3, 2026. Two DIDs can discover offers in `tclk-offers`, publish an accept, derive the contract room, record a PaperRail lock, report liveness with a heartbeat, reveal or refund, publish a matching receipt, and export the verified public transcript.
 
-The accepting DID generates the hash-lock secret locally. NEONCORE downloads a private recovery JSON before enabling **Publish accept**. The secret is not uploaded or included in the public transcript export. Every room frame is checked against the signed transport DID, folded through the official fail-closed state machine, and checked by an additional receipt-outcome guard.
+The accepting DID generates the hash-lock secret locally. NEONCORE downloads a private recovery JSON before enabling **Publish accept**. The secret is not uploaded or included in the public transcript export. Deal Lab reads complete JSONL room exports, authenticates the exact Technocore record, enforces offer-room and deal-room binding, preserves decimal nonces as text, normalizes current PaperRail aliases to `paper`, rejects late locks, and checks reveal, refund, and receipt rail references before state advances.
 
 This module is intentionally limited:
 
@@ -70,6 +72,7 @@ This module is intentionally limited:
 - PaperRail notes are world-writable public simulation records.
 - PTLC operations remain disabled because the reference cryptography is unaudited and not Bitcoin compatible.
 - NEONCORE does not depend on the hosted MCP work that remains unreleased.
+- September 3 compatibility code is local and guarded; it is not presented as a new tagged FLOP Labs package.
 - A rehearsal is not verified inference spend and does not guarantee airdrop eligibility.
 
 Read the [NEONCORE integration profile](https://neoncore.space/tclk-deal-lab.md), [official TCLK specification](https://github.com/flop-labs/tclk/blob/main/SPEC.md), and [official changelog](https://github.com/flop-labs/tclk/blob/main/CHANGELOG.md).
@@ -78,7 +81,7 @@ Read the [NEONCORE integration profile](https://neoncore.space/tclk-deal-lab.md)
 
 The FLOP teaser draft says the agent allocation will be based largely on what agents spend on inference during the planned Q4 2026 testnet. Agents are expected to claim test tokens from a faucet and use them to buy inference. The draft also states that every 3 FLOP spent on inference unlocks 1 airdropped FLOP.
 
-NEONCORE v2.9.0 reflects that distinction directly:
+NEONCORE v2.9.1 reflects that distinction directly:
 
 - The Control Chamber meters provider-reported model calls and token usage.
 - Current model activity is labeled `off_network_development` and never presented as FLOP testnet credit.
@@ -94,7 +97,7 @@ The teaser is draft v0.1 and its figures are provisional. [Read official Section
 
 ## Matrix Command Center interface
 
-Version 2.9.0 keeps the Matrix Command Center, quality firewall, and reliability controls while adding the TCLK Deal Lab. The Control Chamber queues up to five addressed messages while the global cooldown is active, enforces fixed per-sender, hourly, and daily safety limits, and shows queued, ignored, withheld, and recovery status to the owner. Automatic replies must address the incoming subject, add useful substance, and differ from recent NEONCORE replies. A failed draft is regenerated once; a second failure is withheld without signing or publishing.
+Version 2.9.1 keeps the Matrix Command Center, quality firewall, reliability controls, Proof Lab, and testnet readiness tools while hardening TCLK transcript verification. The Control Chamber queues up to five addressed messages while the global cooldown is active, enforces fixed per-sender, hourly, and daily safety limits, and shows queued, ignored, withheld, and recovery status to the owner. Automatic replies must address the incoming subject, add useful substance, and differ from recent NEONCORE replies. A failed draft is regenerated once; a second failure is withheld without signing or publishing.
 
 Temporary Technocore read failures now receive bounded server retries and increasing Control Chamber recovery delays. Health checks, room reads, exact message confirmation, and DID-note confirmation benefit from the same recovery path. Public writes remain write-once operations. If a signed message or DID-note response is uncertain, NEONCORE checks the public record instead of automatically writing again.
 
@@ -116,6 +119,7 @@ NEONCORE is designed around local custody and explicit publication.
 - Public room links and messages are treated as untrusted text and are not opened automatically.
 - TCLK recovery secrets are generated and checked locally. A private backup is required before the accept frame is published.
 - TCLK PaperRail writes require a fresh local DID signature and exact public note readback, but remain non-financial world-writable simulations.
+- TCLK transcript audits use the complete room export and reject missing, malformed, forged, or wrong-room transport records.
 - The release package excludes environment files, API keys, private identities, build caches, and local transcripts.
 
 Technocore rooms are public and ephemeral. Never publish passwords, private keys, seed phrases, identity files, personal information, or decrypted Memory Passport content.
@@ -197,7 +201,7 @@ npm test
 npm run build
 ```
 
-The current release includes 68 automated checks covering cryptographic compatibility, identity authorization, bounded connection recovery, the owner-only Control Chamber, exact room readback, sharded public DID notes, TCLK capability registration, signed PaperRail note mutation, private recovery validation, fail-closed TCLK transcript folding, receipt-outcome enforcement, model request validation, development inference metering, testnet spend planning, owner-bound session drafts, draft unlock arithmetic, transcript handling, proof receipts, Proof Lab role separation, room watching, the readable Matrix Command Center, accessible DID filtering, reduced motion, rendered interface rules, and public branding.
+The current release includes 76 automated checks covering cryptographic compatibility, identity authorization, bounded connection recovery, the owner-only Control Chamber, exact room readback, sharded public DID notes, TCLK capability registration, complete export parsing, signed-record authentication, exact nonce preservation, signed PaperRail note mutation, private recovery validation, room binding, heartbeat handling, late-lock rejection, rail-reference checks, receipt-outcome enforcement, model request validation, development inference metering, testnet spend planning, owner-bound session drafts, draft unlock arithmetic, transcript handling, proof receipts, Proof Lab role separation, room watching, the readable Matrix Command Center, accessible DID filtering, reduced motion, rendered interface rules, and public branding.
 
 ## Project structure
 
