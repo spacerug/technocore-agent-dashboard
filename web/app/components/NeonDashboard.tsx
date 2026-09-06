@@ -8,11 +8,13 @@ import {
   generateIdentity,
   identityJson,
   loadIdentityJson,
-  signBytes,
+  makeProof,
   shortDid,
   signTechnocoreMessage,
   validateRoom,
 } from "../lib/browser-crypto";
+import { createPasskeyIdentity, passkeyIdentityAvailable, recoverPasskeyIdentity } from "../lib/passkey-identity";
+import { createDelegation, encodeDelegation, parseDelegations, withoutAgentDelegations } from "../lib/delegation";
 import { ArtifactPackage, createArtifactPackage, downloadBlob, verifyArtifact } from "../lib/artifact";
 import {
   createMemoryPassport,
@@ -44,12 +46,19 @@ import TclkDealLab from "./TclkDealLab";
 type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "tclk" | "flop" | "safety";
 type ServiceState = "unchecked" | "checking" | "online" | "offline";
 type RoomMessage = { room?: string; seq?: number; ts?: string; from?: string; nonce?: number | string; sig?: string; text?: string };
+type LiveRoomView = {
+  messages: RoomMessage[];
+  lastSeq?: number;
+  firstSeq?: number;
+  generation?: string;
+  waitHeld?: boolean;
+};
 
 const NAV: Array<{ id: Tab; number: string; label: string; note: string }> = [
   { id: "identity", number: "01", label: "Identity", note: "Load locally" },
   { id: "send", number: "02", label: "Check & Send", note: "Signed messages" },
   { id: "room", number: "03", label: "Read Room", note: "Untrusted text" },
-  { id: "agent", number: "04", label: "Control Chamber", note: "Owner DID only" },
+  { id: "agent", number: "04", label: "Control Chamber", note: "Owner or delegate" },
   { id: "artifact", number: "05", label: "Artifact", note: "Signed provenance" },
   { id: "memory", number: "06", label: "Memory Passport", note: "Encrypted handoff" },
   { id: "proof", number: "07", label: "Proof Lab", note: "Verified work" },
@@ -111,6 +120,12 @@ export default function NeonDashboard() {
   const [notice, setNotice] = useState<{ tone: "good" | "warn" | "bad"; text: string } | null>(null);
   const identityInput = useRef<HTMLInputElement>(null);
   const [didNotePath, setDidNotePath] = useState("");
+  const [didNoteValue, setDidNoteValue] = useState("");
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  const [delegateDid, setDelegateDid] = useState("");
+  const [delegateScope, setDelegateScope] = useState(`r:${TECHNOCORE_MAIN_ROOM}`);
+  const [delegateDays, setDelegateDays] = useState(7);
+  const [delegationStatus, setDelegationStatus] = useState("");
 
   const [sendRoom, setSendRoom] = useState(TECHNOCORE_MAIN_ROOM);
   const [sendText, setSendText] = useState("");
@@ -162,6 +177,11 @@ export default function NeonDashboard() {
     return () => window.removeEventListener("hashchange", openLinkedSection);
   }, []);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setPasskeySupported(passkeyIdentityAvailable()), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const visibleMessages = useMemo(
     () => messages.filter((message) => !onlyMine || (identity && message.from === identity.did)),
     [messages, onlyMine, identity],
@@ -187,6 +207,8 @@ export default function NeonDashboard() {
       setIdentity(verified);
       setIdentityBackedUp(true);
       setDidNotePath("");
+      setDidNoteValue("");
+      setDelegationStatus("");
       const previousCheckIn = window.localStorage.getItem(`neon-memory-last-checkin:${verified.did}`);
       setLastCheckIn(previousCheckIn);
       setWeeklyDue(!previousCheckIn || Date.now() - new Date(previousCheckIn).getTime() >= 7 * 24 * 60 * 60 * 1000);
@@ -199,10 +221,31 @@ export default function NeonDashboard() {
       setIdentity(created);
       setIdentityBackedUp(false);
       setDidNotePath("");
+      setDidNoteValue("");
+      setDelegationStatus("");
       setLastCheckIn(null);
       setWeeklyDue(true);
       setNotice({ tone: "warn", text: "New identity created. Download its private backup before using it. A lost browser identity cannot be recovered." });
     });
+  }
+
+  async function unlockPasskey(mode: "create" | "recover") {
+    const action = mode === "create" ? createPasskeyIdentity : recoverPasskeyIdentity;
+    const loaded = await run(
+      mode === "create" ? "Creating a recoverable passkey DID…" : "Unlocking your passkey DID…",
+      action,
+      (verified) => {
+        setIdentity(verified);
+        setIdentityBackedUp(true);
+        setDidNotePath("");
+        setDidNoteValue("");
+        setDelegationStatus("");
+        const previousCheckIn = window.localStorage.getItem(`neon-memory-last-checkin:${verified.did}`);
+        setLastCheckIn(previousCheckIn);
+        setWeeklyDue(!previousCheckIn || Date.now() - new Date(previousCheckIn).getTime() >= 7 * 24 * 60 * 60 * 1000);
+      },
+    );
+    if (loaded) await connectAfterIdentityLoad();
   }
 
   function downloadIdentity() {
@@ -262,21 +305,80 @@ export default function NeonDashboard() {
     }
   }
 
+  async function readDidNote(did: string): Promise<{ value: string | null; path: string }> {
+    const payload = await apiJson(`/api/technocore?action=did_note&did=${encodeURIComponent(did)}`);
+    return {
+      value: typeof payload.value === "string" ? payload.value : null,
+      path: String(payload.path ?? ""),
+    };
+  }
+
+  function baseDidNote(did: string, current: string | null): string {
+    const preserved = (current ?? "").trim().split(/\s+/).filter(Boolean);
+    const withoutBase = preserved.filter((token) => token !== did && token !== "tclk1:paper");
+    return [did, "tclk1:paper", ...withoutBase].join(" ");
+  }
+
+  async function updateDidNote(value: string, previous: string | null): Promise<Record<string, unknown>> {
+    if (!identity) throw new Error("Load the owner identity first.");
+    const createdAt = new Date();
+    const unsigned: Record<string, unknown> = {
+      schema: "neoncore/did-note-update/v1",
+      action: "update_did_note",
+      owner_did: identity.did,
+      created_at_utc: createdAt.toISOString(),
+      expires_at_utc: new Date(createdAt.getTime() + 90_000).toISOString(),
+      request_nonce: crypto.randomUUID(),
+      previous,
+      value,
+    };
+    return apiJson("/api/technocore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...unsigned, proof: await makeProof(identity, unsigned) }),
+    });
+  }
+
   async function registerDidNote() {
     if (!identity || !identityReady) return setNotice({ tone: "bad", text: "Load an identity and finish its backup first." });
     if (service !== "online") return setNotice({ tone: "bad", text: "Connect to Technocore before registering the public DID note." });
-    const nonce = Date.now();
-    const noteValue = `${identity.did} tclk1:paper`;
-    const proof = new TextEncoder().encode(`neoncore-did-note|${identity.did}|${nonce}|${noteValue}`);
-    const sig = await signBytes(identity, proof);
-    await run("Registering and checking the public DID note...", () => apiJson("/api/technocore", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "register_did", did: identity.did, nonce, sig, tclk: true }),
-    }), (payload) => {
+    await run("Registering and checking the public DID note...", async () => {
+      const current = await readDidNote(identity.did);
+      const value = baseDidNote(identity.did, current.value);
+      return updateDidNote(value, current.value);
+    }, (payload) => {
       const path = String(payload.path ?? "");
       setDidNotePath(path);
+      setDidNoteValue(String(payload.value ?? ""));
       setNotice({ tone: "good", text: `Public DID note and tclk1:paper capability confirmed at ${path}. The capability is a routing hint; signed frames remain the proof.` });
+    });
+  }
+
+  async function publishDelegation(expireNow = false) {
+    if (!identity || !identityReady) return setNotice({ tone: "bad", text: "Load the owner identity first." });
+    if (service !== "online") return setNotice({ tone: "bad", text: "Connect to Technocore before changing delegation." });
+    const agentDid = delegateDid.trim();
+    const scope = delegateScope.trim();
+    const now = Math.floor(Date.now() / 1000);
+    const expires = String(expireNow ? now - 1 : now + Math.max(1, Math.min(30, delegateDays)) * 86_400);
+    const nonce = String(Date.now());
+    await run(expireNow ? "Expiring the delegated operator…" : "Signing and publishing the scoped delegation…", async () => {
+      const current = await readDidNote(identity.did);
+      const delegation = await createDelegation(identity, agentDid, scope, expires, nonce);
+      const base = baseDidNote(identity.did, withoutAgentDelegations(current.value, agentDid));
+      const value = `${base} ${encodeDelegation(delegation)}`.trim();
+      if (value.length > 4_096) throw new Error("The DID note is full. Remove an older delegated operator before adding another.");
+      const response = await updateDidNote(value, current.value);
+      return { response, delegation, value };
+    }, (payload) => {
+      const response = payload.response;
+      const delegation = payload.delegation;
+      setDidNotePath(String(response.path ?? ""));
+      setDidNoteValue(payload.value);
+      setDelegationStatus(expireNow
+        ? `EXPIRED · ${agentDid} can no longer operate through this delegation.`
+        : `ACTIVE · ${agentDid} · ${String(delegation.scope)} · expires ${new Date(Number(delegation.expires) * 1_000).toLocaleString()}`);
+      setNotice({ tone: "good", text: expireNow ? "The delegated operator was expired with a newer signed record." : "The scoped operator delegation was signed, published, and read back." });
     });
   }
 
@@ -308,6 +410,26 @@ export default function NeonDashboard() {
   async function readProofRoom(roomValue: string): Promise<RoomMessage[]> {
     const payload = await fetchRoom(roomValue, false);
     return Array.isArray(payload.messages) ? (payload.messages as RoomMessage[]) : [];
+  }
+
+  async function readLiveRoom(roomValue: string, options: { since?: number; wait?: number; signal?: AbortSignal } = {}): Promise<LiveRoomView> {
+    const room = validateRoom(roomValue);
+    const query = new URLSearchParams({ action: "room", room, limit: "200" });
+    if (options.since !== undefined) query.set("since", String(options.since));
+    if (options.wait) query.set("wait", String(options.wait));
+    const response = await apiJson(`/api/technocore?${query.toString()}`, { signal: options.signal });
+    const payload = response.payload as Record<string, unknown>;
+    const numberOrUndefined = (value: unknown) => {
+      const number = Number(value);
+      return Number.isSafeInteger(number) && number >= 0 ? number : undefined;
+    };
+    return {
+      messages: Array.isArray(payload.messages) ? payload.messages as RoomMessage[] : [],
+      lastSeq: numberOrUndefined(payload.last_seq),
+      firstSeq: numberOrUndefined(payload.first_seq),
+      generation: payload.generation === undefined || payload.generation === null ? undefined : String(payload.generation),
+      waitHeld: payload.wait_held === true,
+    };
   }
 
   async function publishSigned(roomValue: string, textValue: string): Promise<TechnocoreReceipt> {
@@ -534,9 +656,11 @@ export default function NeonDashboard() {
                   <input ref={identityInput} type="file" accept=".json,application/json" hidden onChange={(event) => { const file = fileFromEvent(event); if (file) void loadIdentity(file); event.target.value = ""; }} />
                   <div className="hero-actions">
                     <button className="button primary hero-primary" onClick={() => identityInput.current?.click()}>Load identity JSON</button>
-                    <button className="button" onClick={makeIdentity}>Create new DID</button>
+                    <button className="button primary" disabled={!passkeySupported || Boolean(busy)} onClick={() => void unlockPasskey("recover")}>Recover with passkey</button>
+                    <button className="button" disabled={!passkeySupported || Boolean(busy)} onClick={() => void unlockPasskey("create")}>Create passkey DID</button>
+                    <button className="button" onClick={makeIdentity}>Create export-only DID</button>
                   </div>
-                  <p className="hero-assurance"><span>✓</span> Private keys stay inside this browser session.</p>
+                  <p className="hero-assurance"><span>✓</span> Private keys stay inside this browser session. Passkey recovery uses your device provider and remains tied to neoncore.space.</p>
                 </div>
                 <div className="core-visual" aria-hidden="true">
                   <div className="core-halo halo-one" />
@@ -550,22 +674,38 @@ export default function NeonDashboard() {
               <section className="network-metrics wide" aria-label="Current session status">
                 <article><span>ACTIVE IDENTITY</span><strong>{identity ? identityLabel : "Not loaded"}</strong><small className={identityReady ? "good" : "waiting"}>{identityReady ? "LOCAL KEY READY" : "IDENTITY REQUIRED"}</small></article>
                 <article><span>TECHNOCORE</span><strong>{service === "online" ? "Connected" : service === "checking" ? "Checking" : "Not connected"}</strong><small className={service === "online" ? "good" : "waiting"}>{serviceDetail}</small></article>
-                <article><span>KEY CUSTODY</span><strong>Browser local</strong><small className="good">NO SECRET UPLOAD</small></article>
+                <article><span>KEY CUSTODY</span><strong>{identity?.provider === "passkey" ? "Passkey protected" : "Browser local"}</strong><small className="good">NO SECRET UPLOAD</small></article>
               </section>
               <section className="setup-path wide" aria-label="Required setup steps">
-                <article className={identityReady ? "complete" : "current"}><span>1</span><div><strong>Load your identity JSON</strong><small>{identityReady ? "DID VERIFIED LOCALLY" : "THIS MUST BE DONE FIRST"}</small></div></article>
+                <article className={identityReady ? "complete" : "current"}><span>1</span><div><strong>Unlock a DID identity</strong><small>{identityReady ? "DID VERIFIED LOCALLY" : "JSON OR PASSKEY"}</small></div></article>
                 <div className="setup-arrow">›</div>
                 <article className={service === "online" ? "complete" : identityReady ? "current" : "waiting"}><span>2</span><div><strong>Connect to Technocore</strong><small>{service === "online" ? "CONNECTION READY" : identityReady ? "CHECKING AUTOMATICALLY" : "STARTS AFTER IDENTITY"}</small></div></article>
               </section>
               <Panel eyebrow="CURRENT SESSION" title={identity ? "Identity verified" : "Waiting for an identity"} className="wide">
                 {identity ? <>
                   <div className="did-block"><span>PUBLIC DID</span><code>{identity.did}</code></div>
+                  <StatusLine tone="good">Identity source: {identity.provider === "passkey" ? "recoverable passkey with required device verification" : identity.provider === "generated" ? "new export-only browser key" : "verified identity JSON"}.</StatusLine>
                   <div className="button-row"><button className="button" onClick={() => navigator.clipboard.writeText(identity.did)}>Copy public DID</button><button className={`button ${identityBackedUp ? "" : "danger"}`} onClick={downloadIdentity}>Download private identity backup</button></div>
                   {!identityBackedUp && <StatusLine tone="warn">Required: download the private backup before this new identity can sign anything.</StatusLine>}
                   <StatusLine>Optional public discovery: register your public DID plus the <code>tclk1:paper</code> capability in Technocore&apos;s current 256 shard note registry. The note is a routing hint, not identity proof.</StatusLine>
                   <div className="button-row"><button className="button" disabled={!identityReady || service !== "online" || Boolean(busy)} onClick={registerDidNote}>Register DID + TCLK capability</button></div>
                   {didNotePath && <div className="did-block"><span>CONFIRMED DID NOTE PATH</span><code>{didNotePath}</code></div>}
                 </> : <StatusLine>No file selected. Your computer has not shared any key material with this site.</StatusLine>}
+              </Panel>
+              <Panel eyebrow="SCOPED AUTHORITY" title="Delegate Control Chamber operation" className="wide delegation-panel">
+                <p>Let a separate agent DID operate NEONCORE without sharing the owner key. The owner signs a public, room-scoped, expiring delegation. The server verifies it on every model request and fails closed.</p>
+                <StatusLine tone="warn">Use short expirations. Technocore delegation revocation works by publishing a newer already-expired record, not by deleting history.</StatusLine>
+                <div className="delegation-grid">
+                  <Field label="Agent DID" hint="The separate did:key that will sign Control Chamber requests."><input value={delegateDid} onChange={(event) => setDelegateDid(event.target.value)} placeholder="did:key:z6Mk…" /></Field>
+                  <Field label="Scope" hint="Room scope is recommended."><input value={delegateScope} onChange={(event) => setDelegateScope(event.target.value)} placeholder="r:lobby" /></Field>
+                  <Field label="Expires in days" hint="1 to 30 days; renew intentionally."><input type="number" min="1" max="30" value={delegateDays} onChange={(event) => setDelegateDays(Math.max(1, Math.min(30, Number(event.target.value) || 1)))} /></Field>
+                </div>
+                <div className="button-row">
+                  <button className="button primary" disabled={!identityReady || service !== "online" || !delegateDid.trim() || Boolean(busy)} onClick={() => void publishDelegation(false)}>Publish scoped delegation</button>
+                  <button className="button danger" disabled={!identityReady || service !== "online" || !delegateDid.trim() || Boolean(busy)} onClick={() => void publishDelegation(true)}>Expire delegation now</button>
+                </div>
+                {delegationStatus && <StatusLine tone={delegationStatus.startsWith("ACTIVE") ? "good" : "warn"}>{delegationStatus}</StatusLine>}
+                {didNoteValue && <StatusLine>{parseDelegations(didNoteValue).length} delegation record(s) are present in the last confirmed owner note loaded by this browser.</StatusLine>}
               </Panel>
             </div>
           )}
@@ -640,7 +780,7 @@ export default function NeonDashboard() {
               identityReady={identityReady}
               serviceOnline={service === "online"}
               publishSigned={publishSigned}
-              readRoomMessages={readProofRoom}
+              readRoomView={readLiveRoom}
               onNotice={setNotice}
               onOpenSend={() => { setSendRoom(TECHNOCORE_MAIN_ROOM); setTab("send"); }}
             />
@@ -708,7 +848,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.9.1 · TCLK CONFORMANCE</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
+      <footer><span>NEONCORE · WEB 2.10.0 · PASSKEY AUTHORITY</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
     </main>
   );
 }

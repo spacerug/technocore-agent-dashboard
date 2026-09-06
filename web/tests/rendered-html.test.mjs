@@ -27,13 +27,32 @@ test("renders the owner transcript and uses lobby for public conversation defaul
 test("brands agent operation as a single owner Control Chamber", () => {
   const agent = readFileSync("app/components/LiveAgent.tsx", "utf8");
   const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
-  assert.match(dashboard, /label: "Control Chamber", note: "Owner DID only"/);
+  assert.match(dashboard, /label: "Control Chamber", note: "Owner or delegate"/);
   assert.match(agent, /Public conversation\. Private control\./);
   assert.match(agent, /Creating a new DID will not grant access/);
   assert.match(agent, /OWNER DID VERIFIED/);
   assert.match(agent, /Activate NEONCORE/);
   assert.match(agent, /Emergency stop/);
   assert.match(agent, /if \(!ownerAuthorized\) return/);
+});
+
+test("adds passkey recovery, scoped delegation, and generation-aware live wait", () => {
+  const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
+  const agent = readFileSync("app/components/LiveAgent.tsx", "utf8");
+  const passkey = readFileSync("app/lib/passkey-identity.ts", "utf8");
+  const delegation = readFileSync("app/lib/delegation.ts", "utf8");
+  const relay = readFileSync("app/api/live-agent/route.ts", "utf8");
+  assert.match(dashboard, /Recover with passkey/);
+  assert.match(dashboard, /Publish scoped delegation/);
+  assert.match(passkey, /residentKey: "required"/);
+  assert.match(passkey, /userVerification: "required"/);
+  assert.match(passkey, /prf:/);
+  assert.match(delegation, /delegate\|\$\{rootDid\}/);
+  assert.match(agent, /wait: 10/);
+  assert.match(agent, /generationChanged/);
+  assert.match(agent, /DELEGATED OPERATOR VERIFIED/);
+  assert.match(relay, /assessDelegation/);
+  assert.match(relay, /Access failed closed/);
 });
 
 test("prepares FLOP testnet activity without claiming development spend", () => {
@@ -65,7 +84,7 @@ test("uses the readable NEONCORE Matrix Command Center visual system", () => {
   assert.match(css, /\.identity-hero/);
   assert.match(css, /\.primary-nav/);
   assert.match(css, /focus-visible/);
-  assert.match(dashboard, /WEB 2\.9\.1 · TCLK CONFORMANCE/);
+  assert.match(dashboard, /WEB 2\.10\.0 · PASSKEY AUTHORITY/);
   assert.match(dashboard, /Your agent has a DID/);
   assert.match(dashboard, /Current session status/);
   assert.match(css, /@media \(max-width: 1680px\)/);
@@ -78,7 +97,7 @@ test("renders accessible DID filtering above a motion-safe Matrix background", (
   const css = readFileSync("app/globals.css", "utf8");
   assert.match(dashboard, /className="check pixel-check"/);
   assert.match(dashboard, /className="pixel-check-box"/);
-  assert.match(dashboard, /WEB 2\.9\.1 · TCLK CONFORMANCE/);
+  assert.match(dashboard, /WEB 2\.10\.0 · PASSKEY AUTHORITY/);
   assert.match(matrix, /prefers-reduced-motion: reduce/);
   assert.match(matrix, /aria-hidden="true"/);
   assert.match(css, /\.matrix-rain/);

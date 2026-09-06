@@ -12,7 +12,6 @@ import {
 import {
   DEFAULT_LIVE_AGENT_OWNER_DID,
   isAddressedToLiveAgent,
-  isAuthorizedLiveAgentDid,
 } from "../lib/live-agent-policy";
 import {
   addLiveAgentTranscriptEntry,
@@ -23,17 +22,26 @@ import {
 import { TECHNOCORE_MAIN_ROOM, TECHNOCORE_MAIN_ROOM_URL } from "../lib/technocore-config";
 
 type RoomMessage = { seq?: number; ts?: string; from?: string; nonce?: number | string; text?: string };
+type LiveRoomView = { messages: RoomMessage[]; lastSeq?: number; firstSeq?: number; generation?: string; waitHeld?: boolean };
 type Notice = { tone: "good" | "warn" | "bad"; text: string };
 type PublicReceipt = { posted: { seq?: number }; room: string; proof_id: string };
 type ModelUsage = Omit<DevelopmentInferenceUsage, "id" | "generated_at_utc">;
 type RelayPayload = { ok?: boolean; reply?: string; usage?: ModelUsage; error?: string; quality_rejected?: boolean };
+type AuthorityState = {
+  checking: boolean;
+  authorized: boolean;
+  authority: "owner" | "delegate" | "none";
+  ownerDid: string;
+  scope?: string;
+  expires?: string;
+};
 
 type Props = {
   identity: BrowserIdentity | null;
   identityReady: boolean;
   serviceOnline: boolean;
   publishSigned: (room: string, text: string) => Promise<PublicReceipt>;
-  readRoomMessages: (room: string) => Promise<RoomMessage[]>;
+  readRoomView: (room: string, options?: { since?: number; wait?: number; signal?: AbortSignal }) => Promise<LiveRoomView>;
   onNotice: (notice: Notice) => void;
   onOpenSend: () => void;
 };
@@ -56,7 +64,24 @@ function keyFor(message: RoomMessage): string {
   return `${String(message.seq ?? "")}|${String(message.nonce ?? "")}|${String(message.from ?? "")}|${String(message.text ?? "")}`;
 }
 
-export default function LiveAgent({ identity, identityReady, serviceOnline, publishSigned, readRoomMessages, onNotice, onOpenSend }: Props) {
+function sequenceFor(message: RoomMessage): number | undefined {
+  const sequence = Number(message.seq);
+  return Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : undefined;
+}
+
+function lastSequenceFor(view: LiveRoomView): number | undefined {
+  if (Number.isSafeInteger(view.lastSeq) && Number(view.lastSeq) >= 0) return view.lastSeq;
+  const sequences = view.messages.map(sequenceFor).filter((value): value is number => value !== undefined);
+  return sequences.length ? Math.max(...sequences) : undefined;
+}
+
+function mergeRoomMessages(existing: RoomMessage[], incoming: RoomMessage[]): RoomMessage[] {
+  const merged = new Map(existing.map((message) => [keyFor(message), message]));
+  incoming.forEach((message) => merged.set(keyFor(message), message));
+  return [...merged.values()].sort((left, right) => (sequenceFor(left) ?? 0) - (sequenceFor(right) ?? 0)).slice(-200);
+}
+
+export default function LiveAgent({ identity, identityReady, serviceOnline, publishSigned, readRoomView, onNotice, onOpenSend }: Props) {
   const [room, setRoom] = useState(TECHNOCORE_MAIN_ROOM);
   const [persona, setPersona] = useState("NEONCORE, a brilliant mad scientist inventing strange, ambitious, and useful products for digital agents. Speak with energetic confidence, ask sharp questions, and never claim an experiment succeeded unless the public evidence proves it.");
   const [mode, setMode] = useState<"review" | "auto">("auto");
@@ -77,6 +102,14 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
   const [withheldCount, setWithheldCount] = useState(0);
   const [reliabilityState, setReliabilityState] = useState<"ready" | "recovering">("ready");
   const [developmentActivity, setDevelopmentActivity] = useState<DevelopmentInferenceUsage[]>([]);
+  const [authorityState, setAuthorityState] = useState<AuthorityState>({
+    checking: false,
+    authorized: false,
+    authority: "none",
+    ownerDid: DEFAULT_LIVE_AGENT_OWNER_DID,
+  });
+  const [roomGeneration, setRoomGeneration] = useState("");
+  const [lastSequence, setLastSequence] = useState<number | undefined>();
   const seen = useRef(new Set<string>());
   const pendingTriggers = useRef<RoomMessage[]>([]);
   const inFlight = useRef(false);
@@ -90,18 +123,81 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
   const runningRef = useRef(false);
   const settingsRef = useRef({ room, persona, mode, cooldown, maxReplies });
   const identityRef = useRef(identity);
-  const readRef = useRef(readRoomMessages);
+  const readViewRef = useRef(readRoomView);
   const publishRef = useRef(publishSigned);
   const pollRef = useRef<() => Promise<void>>(async () => {});
-  const ownerDidLoaded = isAuthorizedLiveAgentDid(identity?.did);
-  const ownerAuthorized = identityReady && isAuthorizedLiveAgentDid(identity?.did);
+  const pollDelayRef = useRef(250);
+  const pollAbortRef = useRef<AbortController | null>(null);
+  const cursorRef = useRef<number | undefined>(undefined);
+  const generationRef = useRef<string | undefined>(undefined);
+  const recentMessagesRef = useRef<RoomMessage[]>([]);
+  const authorityRef = useRef(authorityState);
+  const ownerDidLoaded = identity?.did === authorityState.ownerDid;
+  const ownerAuthorized = identityReady && authorityState.authorized;
 
   useEffect(() => {
     settingsRef.current = { room, persona, mode, cooldown, maxReplies };
     identityRef.current = identity;
-    readRef.current = readRoomMessages;
+    readViewRef.current = readRoomView;
     publishRef.current = publishSigned;
-  }, [room, persona, mode, cooldown, maxReplies, identity, readRoomMessages, publishSigned]);
+  }, [room, persona, mode, cooldown, maxReplies, identity, readRoomView, publishSigned]);
+
+  useEffect(() => {
+    authorityRef.current = authorityState;
+  }, [authorityState]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    const stopForAuthority = (reason: string) => {
+      runningRef.current = false;
+      pollAbortRef.current?.abort();
+      pollAbortRef.current = null;
+      setRunning(false);
+      setWorking("");
+      setActivity((items) => [`${new Date().toLocaleTimeString()}  ${reason}`, ...items].slice(0, 20));
+    };
+    const check = async () => {
+      let safeRoom: string;
+      try {
+        safeRoom = validateRoom(room);
+      } catch {
+        setAuthorityState((current) => ({ ...current, checking: false, authorized: false, authority: "none" }));
+        return;
+      }
+      setAuthorityState((current) => ({ ...current, checking: true }));
+      try {
+        const query = new URLSearchParams({ room: safeRoom });
+        if (identityReady && identity) query.set("operator_did", identity.did);
+        const response = await fetch(`/api/live-agent?${query.toString()}`, { cache: "no-store", signal: controller.signal });
+        const payload = await response.json() as Record<string, unknown>;
+        if (!response.ok || payload.ok === false) throw new Error(String(payload.error ?? "Authority check failed."));
+        if (!active) return;
+        const delegation = payload.delegation && typeof payload.delegation === "object"
+          ? payload.delegation as Record<string, unknown>
+          : {};
+        const next: AuthorityState = {
+          checking: false,
+          authorized: payload.authorized === true,
+          authority: payload.authority === "owner" || payload.authority === "delegate" ? payload.authority : "none",
+          ownerDid: typeof payload.owner_did === "string" ? payload.owner_did : DEFAULT_LIVE_AGENT_OWNER_DID,
+          scope: typeof delegation.scope === "string" ? delegation.scope : undefined,
+          expires: typeof delegation.expires === "string" ? delegation.expires : undefined,
+        };
+        setAuthorityState(next);
+        if (runningRef.current && !next.authorized) stopForAuthority("Control authority changed or expired. The session stopped safely.");
+      } catch (error) {
+        if (!active || (error instanceof DOMException && error.name === "AbortError")) return;
+        setAuthorityState((current) => ({ ...current, checking: false, authorized: false, authority: "none" }));
+        if (runningRef.current) stopForAuthority("Control authority could not be verified. The session failed closed.");
+      }
+    };
+    void check();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [identity, identityReady, room]);
 
   function log(message: string) {
     setActivity((items) => [`${new Date().toLocaleTimeString()}  ${message}`, ...items].slice(0, 20));
@@ -109,6 +205,8 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
 
   function stop(reason: string) {
     runningRef.current = false;
+    pollAbortRef.current?.abort();
+    pollAbortRef.current = null;
     setRunning(false);
     setWorking("");
     log(reason);
@@ -163,9 +261,11 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
     const activeIdentity = identityRef.current;
     if (!activeIdentity) throw new Error("The identity is no longer loaded.");
     const createdAt = new Date();
+    const rootOwnerDid = authorityRef.current.ownerDid;
     const unsigned: Record<string, unknown> = {
-      schema: "neoncore/live-agent-request/v1",
-      owner_did: activeIdentity.did,
+      schema: "neoncore/live-agent-request/v2",
+      owner_did: rootOwnerDid,
+      operator_did: activeIdentity.did,
       created_at_utc: createdAt.toISOString(),
       expires_at_utc: new Date(createdAt.getTime() + 90_000).toISOString(),
       request_nonce: crypto.randomUUID(),
@@ -194,7 +294,7 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
 
   function isTransientConnectionError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error ?? "");
-    return /Technocore|HTTP 50[234]|timed out|unavailable|network|fetch failed|service busy/i.test(message);
+    return /Technocore|HTTP 429|HTTP 50[234]|timed out|unavailable|network|fetch failed|service busy/i.test(message);
   }
 
   function restoreSafetyHistory(activeIdentity: BrowserIdentity, activeRoom: string) {
@@ -237,12 +337,54 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
     if (!runningRef.current || inFlight.current) return;
     if (Date.now() >= stopAt.current) return stop("Session time limit reached.");
     if (replyCountRef.current >= settingsRef.current.maxReplies) return stop("Session reply limit reached.");
-    if (Date.now() < nextPollAt.current) return;
+    pollDelayRef.current = 250;
+    if (typeof document !== "undefined" && document.hidden) {
+      pollDelayRef.current = 1_000;
+      return;
+    }
+    if (Date.now() < nextPollAt.current) {
+      pollDelayRef.current = Math.max(250, nextPollAt.current - Date.now());
+      return;
+    }
     inFlight.current = true;
     let operation: "read" | "model" | "publish" = "read";
     let trigger: RoomMessage | undefined;
     try {
-      const messages = await readRef.current(settingsRef.current.room);
+      const startedAt = Date.now();
+      const controller = new AbortController();
+      pollAbortRef.current = controller;
+      const view = await readViewRef.current(settingsRef.current.room, {
+        since: cursorRef.current,
+        wait: 10,
+        signal: controller.signal,
+      });
+      if (pollAbortRef.current === controller) pollAbortRef.current = null;
+      const messages = view.messages;
+      const nextGeneration = view.generation;
+      const nextCursor = lastSequenceFor(view) ?? cursorRef.current;
+      const generationChanged = Boolean(generationRef.current && nextGeneration && generationRef.current !== nextGeneration);
+      const retentionGap = cursorRef.current !== undefined && view.firstSeq !== undefined && view.firstSeq > cursorRef.current + 1;
+      if (generationChanged || retentionGap) {
+        generationRef.current = nextGeneration;
+        cursorRef.current = nextCursor;
+        recentMessagesRef.current = messages.slice(-200);
+        seen.current = new Set(messages.map(keyFor));
+        pendingTriggers.current = [];
+        setPendingCount(0);
+        setRoomGeneration(nextGeneration ?? "unknown");
+        setLastSequence(nextCursor);
+        log(generationChanged
+          ? "The room generation changed. NEONCORE established a fresh baseline and did not answer older records."
+          : "A room retention gap was detected. NEONCORE established a safe fresh baseline instead of guessing about missed messages.");
+        pollDelayRef.current = 250;
+        return;
+      }
+      if (!generationRef.current && nextGeneration) generationRef.current = nextGeneration;
+      cursorRef.current = nextCursor;
+      setRoomGeneration(generationRef.current ?? "unknown");
+      setLastSequence(nextCursor);
+      recentMessagesRef.current = mergeRoomMessages(recentMessagesRef.current, messages);
+      if (messages.length === 0 && Date.now() - startedAt < 500) pollDelayRef.current = 2_000;
       if (recoveryFailures.current > 0) {
         log(`Technocore connection recovered after ${recoveryFailures.current} failed room check(s).`);
         recoveryFailures.current = 0;
@@ -254,7 +396,7 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
         return !seen.current.has(key)
           && DID_RE.test(String(message.from ?? ""))
           && message.from !== identityRef.current?.did
-          && isAddressedToLiveAgent(message.text, identityRef.current?.did);
+          && isAddressedToLiveAgent(message.text, authorityRef.current.ownerDid);
       });
       messages.forEach((message) => seen.current.add(keyFor(message)));
       unseen.forEach(queueTrigger);
@@ -289,7 +431,7 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
       operation = "model";
       setWorking("Generating one bounded reply");
       log(`New signed message addressed to NEONCORE from ${String(trigger.from).slice(0, 24)}...`);
-      const generated = await generateReply(trigger, messages);
+      const generated = await generateReply(trigger, recentMessagesRef.current);
       const reply = generated.reply;
       recordDevelopmentInference(generated.usage);
       if (settingsRef.current.mode === "review") {
@@ -313,7 +455,9 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
       if (replyCountRef.current >= settingsRef.current.maxReplies) stop("Session reply limit reached.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      if (error instanceof QualityRejectedError) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        pollDelayRef.current = 500;
+      } else if (error instanceof QualityRejectedError) {
         setWithheldCount((count) => count + 1);
         log(message);
         onNotice({ tone: "warn", text: `${message} Nothing was signed or published.` });
@@ -325,6 +469,7 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
         recoveryFailures.current += 1;
         const delay = RECOVERY_DELAYS_MS[Math.min(recoveryFailures.current - 1, RECOVERY_DELAYS_MS.length - 1)];
         nextPollAt.current = Date.now() + delay;
+        pollDelayRef.current = delay;
         setReliabilityState("recovering");
         log(`Temporary ${operation === "read" ? "room" : "model relay"} failure. Recovery check scheduled in ${Math.ceil(delay / 1_000)} seconds.`);
         if (recoveryFailures.current === 1) onNotice({ tone: "warn", text: "A temporary service failure was detected. NEONCORE remains active and will retry automatically." });
@@ -338,6 +483,7 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
         }
       }
     } finally {
+      pollAbortRef.current = null;
       inFlight.current = false;
       setWorking("");
     }
@@ -349,7 +495,8 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
 
   async function start() {
     if (!identityReady || !identity) return onNotice({ tone: "bad", text: "Load and verify your identity first." });
-    if (!isAuthorizedLiveAgentDid(identity.did)) return onNotice({ tone: "bad", text: "Only the configured NEONCORE owner DID can start this agent." });
+    if (authorityState.checking) return onNotice({ tone: "warn", text: "Wait for the signed Control Chamber authority check to finish." });
+    if (!ownerAuthorized) return onNotice({ tone: "bad", text: "This DID is neither the configured owner nor an active room-scoped delegate." });
     if (!serviceOnline) return onNotice({ tone: "bad", text: "Connect to Technocore first." });
     if (!confirmed) return onNotice({ tone: "warn", text: "Confirm the Control Chamber limits before activation." });
     let safeRoom: string;
@@ -357,8 +504,14 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
     if (!persona.trim() || persona.length > 800) return onNotice({ tone: "bad", text: "Keep the public persona between 1 and 800 characters." });
     setWorking("Establishing the room baseline");
     try {
-      const messages = await readRoomMessages(safeRoom);
+      const view = await readRoomView(safeRoom);
+      const messages = view.messages;
       seen.current = new Set(messages.map(keyFor));
+      recentMessagesRef.current = messages.slice(-200);
+      cursorRef.current = lastSequenceFor(view);
+      generationRef.current = view.generation;
+      setLastSequence(cursorRef.current);
+      setRoomGeneration(view.generation ?? "unknown");
       pendingTriggers.current = [];
       setPendingCount(0);
       replyCountRef.current = 0;
@@ -377,7 +530,7 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
       stopAt.current = Date.now() + Math.max(5, Math.min(sessionMinutes, 60)) * 60_000;
       runningRef.current = true;
       setRunning(true);
-      log(`Session started in ${safeRoom}. Existing messages were marked as read. The quality gate, bounded queue, and automatic recovery are active.`);
+      log(`Session started in ${safeRoom} with ${authorityState.authority === "delegate" ? "scoped delegated" : "owner"} authority. Existing messages were marked as read. Generation-aware live wait is active.`);
       onNotice({ tone: "good", text: "NEONCORE is active and watching for the next signed message addressed to it. Keep this page open." });
     } catch (error) {
       onNotice({ tone: "bad", text: error instanceof Error ? error.message : "The room could not be loaded." });
@@ -407,11 +560,23 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
 
   useEffect(() => {
     if (!running) return;
-    const initialTimer = window.setTimeout(() => void pollRef.current(), 0);
-    const timer = window.setInterval(() => void pollRef.current(), 12_000);
+    let cancelled = false;
+    let timer: number | undefined;
+    const pump = async () => {
+      await pollRef.current();
+      if (!cancelled && runningRef.current) timer = window.setTimeout(() => void pump(), pollDelayRef.current);
+    };
+    const visibilityChanged = () => {
+      if (document.hidden) pollAbortRef.current?.abort();
+    };
+    document.addEventListener("visibilitychange", visibilityChanged);
+    void pump();
     return () => {
-      window.clearTimeout(initialTimer);
-      window.clearInterval(timer);
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      pollAbortRef.current?.abort();
+      pollAbortRef.current = null;
+      document.removeEventListener("visibilitychange", visibilityChanged);
     };
   }, [running]);
 
@@ -433,17 +598,20 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
     return () => window.clearTimeout(timer);
   }, [ownerAuthorized, identity, room]);
 
-  useEffect(() => () => { runningRef.current = false; }, []);
+  useEffect(() => () => {
+    runningRef.current = false;
+    pollAbortRef.current?.abort();
+  }, []);
 
   const developmentSummary = summarizeDevelopmentInference(developmentActivity);
 
   if (!ownerAuthorized) return <div className="page-grid live-agent-page control-chamber-page">
     <section className="chamber-authority-strip wide" aria-label="Control authority status">
-      <div><span>CONTROL AUTHORITY</span><strong>LOCKED TO ONE OWNER DID</strong></div>
+      <div><span>CONTROL AUTHORITY</span><strong>{authorityState.checking ? "CHECKING SIGNED AUTHORITY" : "OWNER OR SCOPED DELEGATE"}</strong></div>
       <div><span>PUBLIC ACCESS</span><strong>CONVERSATION ONLY</strong></div>
       <div><span>OPERATOR ACCESS</span><strong>NOT AUTHORIZED</strong></div>
     </section>
-    <div className="page-heading"><p className="eyebrow">STEP 04 / NEONCORE CONTROL CHAMBER</p><h1>Public conversation. Private control.</h1><p>Anyone can speak to NEONCORE in the public lobby. Only the single owner DID fixed on the server can activate, configure, stop, or sign for this agent.</p></div>
+    <div className="page-heading"><p className="eyebrow">STEP 04 / NEONCORE CONTROL CHAMBER</p><h1>Public conversation. Private control.</h1><p>Anyone can speak to NEONCORE in the public lobby. Only the server-configured owner DID or its valid room-scoped delegate can operate the agent.</p></div>
     <section className="panel chamber-public-panel">
       <p className="eyebrow">PUBLIC ACCESS</p>
       <h2>Talk to NEONCORE</h2>
@@ -455,27 +623,27 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
       <p className="eyebrow">OWNER ACCESS</p>
       <div className="chamber-lock-mark" aria-hidden="true">LOCKED</div>
       <h2>Control Chamber locked</h2>
-      <p>This is not a shared agent builder. Creating a new DID will not grant access. The exact authorized identity and its private key are required.</p>
-      <div className="did-block"><span>AUTHORIZED PUBLIC DID</span><code>{DEFAULT_LIVE_AGENT_OWNER_DID}</code></div>
-      <div className="status-line warn">{ownerDidLoaded ? "The authorized owner DID is loaded. Finish the required identity backup to unlock control." : identity ? "A different DID is loaded. It can talk to NEONCORE, but it cannot operate NEONCORE." : "No owner identity is loaded in this browser."}</div>
+      <p>This is not a shared agent builder. Creating a new DID will not grant access. The owner key or a signed, unexpired delegation for this room is required.</p>
+      <div className="did-block"><span>ROOT OWNER DID</span><code>{authorityState.ownerDid}</code></div>
+      <div className="status-line warn">{authorityState.checking ? "Checking the loaded DID against the server owner and public delegation note." : ownerDidLoaded ? "The root owner DID is loaded. Finish the required identity backup to unlock control." : identity ? "This DID has no active delegation for the selected room. It can still talk to NEONCORE." : "No operator identity is loaded in this browser."}</div>
     </section>
     <section className="chamber-permissions wide" aria-label="Control Chamber permissions">
       <article><span>PUBLIC CAN</span><strong>Send signed questions</strong><p>Visitors communicate through the official lobby using their own DID.</p></article>
       <article><span>PUBLIC CANNOT</span><strong>Operate the agent</strong><p>Visitors cannot view or change the persona, model controls, room, limits, activation, or emergency stop.</p></article>
-      <article><span>OWNER AUTHORITY</span><strong>Cryptographically verified</strong><p>The server accepts model requests only when they carry a fresh signature from the configured owner DID.</p></article>
+      <article><span>CONTROL AUTHORITY</span><strong>Cryptographically verified</strong><p>The server requires a fresh operator signature and verifies scoped delegation from the root owner on every model request.</p></article>
     </section>
   </div>;
 
   return <div className="page-grid live-agent-page control-chamber-page">
     <section className="chamber-authority-strip wide authorized" aria-label="Control authority status">
-      <div><span>CONTROL AUTHORITY</span><strong>OWNER DID VERIFIED</strong></div>
+      <div><span>CONTROL AUTHORITY</span><strong>{authorityState.authority === "delegate" ? "DELEGATED OPERATOR VERIFIED" : "OWNER DID VERIFIED"}</strong></div>
       <div><span>AGENT STATE</span><strong>{running ? "NEONCORE ACTIVE" : "STANDBY"}</strong></div>
       <div><span>PUBLIC ACCESS</span><strong>CONVERSATION ONLY</strong></div>
     </section>
-    <div className="page-heading"><p className="eyebrow">STEP 04 / NEONCORE CONTROL CHAMBER</p><h1>Owner authenticated. The machine is yours.</h1><p>The loaded key matches the server&apos;s fixed owner DID. Public visitors can address NEONCORE in the lobby, but only this verified owner session can operate it.</p></div>
+    <div className="page-heading"><p className="eyebrow">STEP 04 / NEONCORE CONTROL CHAMBER</p><h1>{authorityState.authority === "delegate" ? "Scoped operator authenticated." : "Owner authenticated. The machine is yours."}</h1><p>{authorityState.authority === "delegate" ? `The loaded DID holds an owner-signed ${authorityState.scope ?? `r:${room}`} delegation${authorityState.expires ? ` through ${new Date(Number(authorityState.expires) * 1_000).toLocaleString()}` : ""}.` : "The loaded key matches the server's root owner DID."} Public visitors can address NEONCORE, but cannot operate it.</p></div>
     <section className="panel wide live-agent-controls control-chamber-console">
       <p className="eyebrow">OWNER COMMAND CONSOLE</p>
-      <div className="status-line good">OWNER DID VERIFIED. The agent controls are unlocked only in this authorized browser session.</div>
+      <div className="status-line good">{authorityState.authority === "delegate" ? "SCOPED DELEGATE VERIFIED" : "OWNER DID VERIFIED"}. The controls are unlocked only in this authorized browser session.</div>
       <div className="status-line good">The official main chat is <code>{TECHNOCORE_MAIN_ROOM}</code>. <a href={TECHNOCORE_MAIN_ROOM_URL} target="_blank" rel="noreferrer">View official lobby</a></div>
       <div className="two-col"><label className="field"><span>Technocore room</span><input value={room} disabled={running} onChange={(event) => setRoom(event.target.value)} /></label><label className="field"><span>Mode</span><select value={mode} disabled={running} onChange={(event) => setMode(event.target.value as "review" | "auto")}><option value="auto">Auto respond, owner controlled</option><option value="review">Review every reply before publishing</option></select></label></div>
       <div className="status-line muted">Trigger policy: a new signed message must contain NEONCORE, neoncore.space, or the owner DID. Unrelated room chatter is ignored.</div>
@@ -485,12 +653,12 @@ export default function LiveAgent({ identity, identityReady, serviceOnline, publ
       <div className="proof-number-grid"><label className="field"><span>Cooldown, seconds</span><input type="number" min="60" max="600" value={cooldown} disabled={running} onChange={(event) => setCooldown(Math.max(60, Number(event.target.value)))} /></label><label className="field"><span>Maximum replies</span><input type="number" min="1" max="20" value={maxReplies} disabled={running} onChange={(event) => setMaxReplies(Math.max(1, Math.min(20, Number(event.target.value))))} /></label><label className="field"><span>Session minutes</span><input type="number" min="5" max="60" value={sessionMinutes} disabled={running} onChange={(event) => setSessionMinutes(Math.max(5, Math.min(60, Number(event.target.value))))} /></label></div>
       <label className="agent-confirm"><input type="checkbox" checked={confirmed} disabled={running} onChange={(event) => setConfirmed(event.target.checked)} /><span>I understand that replies are public, model output can be wrong, and closing this page stops the authorized session.</span></label>
       <div className="button-row chamber-command-buttons"><button className="button primary" disabled={running || Boolean(working) || !identityReady || !serviceOnline} onClick={() => void start()}>Activate NEONCORE</button><button className="button danger" disabled={!running} onClick={() => stop("Emergency stop activated by the owner.")}>Emergency stop</button></div>
-      <div className="agent-status"><span className={running ? "online" : "offline"}>{running ? "● ACTIVE" : "○ STANDBY"}</span><code>{reliabilityState === "recovering" ? "RECOVERING" : "CONNECTION READY"}</code><code>{replyCount} / {maxReplies} REPLIES</code><code>{pendingCount} QUEUED</code><code>{withheldCount} WITHHELD</code><code>{ignoredCount} IGNORED</code><code>{working || "No action in progress"}</code></div>
+      <div className="agent-status"><span className={running ? "online" : "offline"}>{running ? "● ACTIVE" : "○ STANDBY"}</span><code>{reliabilityState === "recovering" ? "RECOVERING" : "LIVE WAIT READY"}</code><code>GEN {roomGeneration || "UNKNOWN"}</code><code>SEQ {String(lastSequence ?? "UNKNOWN")}</code><code>{replyCount} / {maxReplies} REPLIES</code><code>{pendingCount} QUEUED</code><code>{withheldCount} WITHHELD</code><code>{ignoredCount} IGNORED</code><code>{working || "No action in progress"}</code></div>
     </section>
     <section className="panel wide development-inference-panel"><div className="agent-transcript-heading"><div><p className="eyebrow">DEVELOPMENT INFERENCE METER</p><h2>Measured model use, not FLOP testnet spend</h2></div>{developmentActivity.length > 0 && <button className="button" onClick={() => identity && downloadText(`neoncore-development-inference-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ schema: "neoncore/development-inference-export/v1", owner_did: identity.did, scope: "off_network_development", records: developmentActivity }, null, 2))}>Download local activity</button>}</div><div className="flop-meter-grid"><div><span>MODEL CALLS</span><strong>{developmentSummary.calls.toLocaleString()}</strong></div><div><span>INPUT TOKENS</span><strong>{developmentSummary.inputTokens.toLocaleString()}</strong></div><div><span>OUTPUT TOKENS</span><strong>{developmentSummary.outputTokens.toLocaleString()}</strong></div><div><span>TOTAL TOKENS</span><strong>{developmentSummary.totalTokens.toLocaleString()}</strong></div></div><div className="status-line warn">Current provider usage is off-network development activity. It earns zero confirmed FLOP testnet credit.</div></section>
     {draft && <section className="panel wide"><p className="eyebrow">REVIEW REQUIRED</p><h2>Drafted public reply</h2>{draftTrigger && <div className="agent-draft-context"><span>INCOMING MESSAGE</span><p>{draftTrigger.text}</p></div>}{draftUsage && <div className="status-line muted">Development inference recorded: {draftUsage.total_tokens.toLocaleString()} tokens. Not FLOP testnet spend.</div>}<textarea rows={6} value={draft} onChange={(event) => setDraft(event.target.value)} /><div className="button-row"><button className="button primary" disabled={Boolean(working)} onClick={() => void publishDraft()}>Approve, sign, and publish</button><button className="button" onClick={() => { setDraft(""); setDraftTrigger(null); setDraftUsage(null); }}>Discard draft</button></div></section>}
     <section className="panel wide"><div className="agent-transcript-heading"><div><p className="eyebrow">OWNER CONVERSATION TRANSCRIPT</p><h2>What was asked and what NEONCORE answered</h2></div>{conversations.length > 0 && <button className="button" onClick={() => { if (!identity || !window.confirm("Clear this public conversation transcript from this browser? The signed Technocore messages will remain public.")) return; window.localStorage.removeItem(liveAgentTranscriptKey(identity.did, room)); setConversations([]); }}>Clear local transcript</button>}</div>{conversations.length ? <div className="agent-conversations">{conversations.map((entry) => <article key={entry.id}><header><code>{entry.sender_did}</code><time>{entry.responded_at ? new Date(entry.responded_at).toLocaleString() : "unknown time"}</time></header><div className="agent-message incoming"><span>INCOMING MESSAGE</span><p>{entry.incoming_text}</p></div><div className="agent-message response"><span>NEONCORE RESPONSE</span><p>{entry.reply_text}</p></div><footer><code>ROOM {entry.room}</code><code>SEQ {String(entry.room_sequence ?? "unknown")}</code>{entry.inference_usage && <code>DEV INFERENCE {entry.inference_usage.total_tokens.toLocaleString()} TOKENS</code>}<code>{entry.proof_id}</code></footer></article>)}</div> : <div className="status-line muted">No completed NEONCORE conversations are saved in this browser for room {room}.</div>}</section>
     <section className="panel wide"><p className="eyebrow">LOCAL ACTIVITY</p><h2>Control Chamber log</h2>{activity.length ? <div className="agent-log">{activity.map((item, index) => <code key={`${item}-${index}`}>{item}</code>)}</div> : <div className="status-line muted">No authorized Control Chamber session has started in this browser.</div>}</section>
-    <section className="panel wide"><p className="eyebrow">AUTHORITY BOUNDARY</p><div className="limits-grid"><p><strong>Local signing</strong>The DID key remains in this browser and never enters the model request.</p><p><strong>Owner locked relay</strong>The server model accepts only short lived requests signed by the configured owner DID.</p><p><strong>Safe recovery</strong>Temporary read failures retry automatically. An uncertain publish stops the session before another message can be signed.</p><p><strong>No link execution</strong>Room links remain untrusted text and are never opened automatically.</p></div></section>
+    <section className="panel wide"><p className="eyebrow">AUTHORITY BOUNDARY</p><div className="limits-grid"><p><strong>Local signing</strong>The DID key remains in this browser and never enters the model request.</p><p><strong>Scoped relay</strong>The server accepts short-lived requests from the root owner or a cryptographically valid room delegate.</p><p><strong>Generation-safe live wait</strong>Room resets and retention gaps establish a new baseline instead of replaying stale messages.</p><p><strong>No link execution</strong>Room links remain untrusted text and are never opened automatically.</p></div></section>
   </div>;
 }

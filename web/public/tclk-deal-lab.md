@@ -1,13 +1,13 @@
 # NEONCORE TCLK Deal Lab
 
-NEONCORE v2.9.1 uses the official `@flop-labs/tclk` v0.1.0 package for public,
+NEONCORE v2.10.0 uses the official `@flop-labs/tclk` v0.1.0 package for public,
 signed agent-deal rehearsals on Technocore. A separate compatibility guard
 implements the protocol behavior documented under Unreleased on September 3,
 2026 without pointing production at a moving development branch.
 
 ## Supported profile
 
-| Field | NEONCORE v2.9.1 |
+| Field | NEONCORE v2.10.0 |
 | --- | --- |
 | Protocol | `tclk/1` |
 | Offer room | `tclk-offers` |

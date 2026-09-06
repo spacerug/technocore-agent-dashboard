@@ -222,7 +222,7 @@ export function preparePaperAccept(offer: OfferFrame, ownerDid: string, now = Da
   recoveryText: string;
 } {
   if (offer.lock !== "hash" || !tclkOfferIncludesRail(offer.rails, "paper") || offer.asset !== "PAPER") {
-    throw new Error("NEONCORE v2.9.1 accepts only TCLK PaperRail hash-lock simulations.");
+    throw new Error("NEONCORE v2.10.0 accepts only TCLK PaperRail hash-lock simulations.");
   }
   if (offer.from === ownerDid) throw new Error("A second DID must accept this offer.");
   if (now >= offer.expiresMs) throw new Error("This offer has expired.");

@@ -1,5 +1,5 @@
 import { TECHNOCORE_BASE_URL } from "../../lib/technocore-config";
-import { verifyBytes } from "../../lib/browser-crypto";
+import { verifyBytes, verifySignedDocument } from "../../lib/browser-crypto";
 import { capabilityToken, decodePaperRecord } from "@flop-labs/tclk";
 import { paperNoteAuthorizationText, type PaperNoteCondition } from "../../lib/tclk-deal";
 
@@ -18,15 +18,15 @@ function json(value: unknown, status = 200): Response {
   });
 }
 
-type FetchMode = "safe-read" | "write-once";
+type FetchMode = "safe-read" | "write-once" | "long-poll";
 
-async function technocoreFetch(url: string, init?: RequestInit, mode: FetchMode = "safe-read"): Promise<Response> {
+async function technocoreFetch(url: string, init?: RequestInit, mode: FetchMode = "safe-read", timeoutMs = 8_000): Promise<Response> {
   const attempts = mode === "safe-read" ? 3 : 1;
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (attempt > 0) await wait(attempt === 1 ? 250 : 750);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8_000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, {
         ...init,
@@ -80,14 +80,18 @@ function exactMessage(
   return message;
 }
 
-async function readRoom(room: string, limit = 100, since?: number): Promise<Record<string, unknown>> {
+async function readRoom(room: string, limit = 100, since?: number, waitSeconds = 0): Promise<Record<string, unknown>> {
   const search = new URLSearchParams({
     format: "json",
     limit: String(Math.max(1, Math.min(limit, 200))),
   });
   if (since !== undefined) search.set("since", String(since));
+  if (waitSeconds > 0) search.set("wait", String(waitSeconds));
   const response = await technocoreFetch(
     `${BASE_URL}/r/${encodeURIComponent(room)}?${search.toString()}`,
+    undefined,
+    waitSeconds > 0 ? "long-poll" : "safe-read",
+    waitSeconds > 0 ? waitSeconds * 1_000 + 5_000 : 8_000,
   );
   const text = await response.text();
   if (!response.ok) throw new Error(`Technocore returned HTTP ${response.status}.`);
@@ -101,6 +105,55 @@ async function readRoom(room: string, limit = 100, since?: number): Promise<Reco
     throw new Error("Technocore returned an unexpected room response.");
   }
   return payload as Record<string, unknown>;
+}
+
+async function setDidNote(body: Record<string, unknown>): Promise<Response> {
+  const did = typeof body.owner_did === "string" ? body.owner_did.trim() : "";
+  const value = typeof body.value === "string" ? body.value.trim() : "";
+  const previous = body.previous === null ? null : typeof body.previous === "string" ? body.previous.trim() : undefined;
+  const createdAt = Date.parse(typeof body.created_at_utc === "string" ? body.created_at_utc : "");
+  const expiresAt = Date.parse(typeof body.expires_at_utc === "string" ? body.expires_at_utc : "");
+  const now = Date.now();
+  if (!DID_RE.test(did) || !value || value.length > 4_096 || /[\r\n]/.test(value) || value.split(/\s+/, 1)[0] !== did) {
+    return json({ ok: false, error: "The DID note update is invalid." }, 400);
+  }
+  if (previous === undefined || (previous !== null && (previous.length > 4_096 || /[\r\n]/.test(previous)))) {
+    return json({ ok: false, error: "The prior DID note value is invalid." }, 400);
+  }
+  if (!Number.isFinite(createdAt) || !Number.isFinite(expiresAt) || createdAt < now - 90_000 || createdAt > now + 30_000 || expiresAt <= now || expiresAt > now + 120_000) {
+    return json({ ok: false, error: "The signed DID note update expired." }, 401);
+  }
+  try {
+    await verifySignedDocument(body, "neoncore/did-note-update/v1");
+  } catch {
+    return json({ ok: false, error: "The DID note update signature is invalid." }, 401);
+  }
+
+  const fingerprint = await didFingerprint(did);
+  const ns = `did-${fingerprint.slice(0, 2)}`;
+  const key = fingerprint.slice(2);
+  const path = `/kv/${ns}/${key}`;
+  const query = previous === null ? "?if_absent=1" : `?if=${encodeURIComponent(previous)}`;
+  let status: number | undefined;
+  try {
+    const response = await technocoreFetch(`${BASE_URL}${path}/set/${encodeURIComponent(value)}${query}`, {
+      headers: { Accept: "text/plain" },
+    }, "write-once");
+    status = response.status;
+    await response.text();
+    if (response.status === 409) {
+      return json({ ok: false, conflict: true, current: await readNote(ns, key), error: "The public DID note changed before this update. Refresh it and try again." }, 409);
+    }
+  } catch {
+    // The exact readback below decides whether an uncertain write landed.
+  }
+  try {
+    const confirmed = await readNote(ns, key);
+    if (confirmed === value) return json({ ok: true, confirmed: true, value, path });
+  } catch {
+    // Return one fail-closed result below.
+  }
+  return json({ ok: false, confirmed: false, error: `Technocore did not confirm the DID note update${status ? ` after HTTP ${status}` : ""}. Refresh the note before trying again.` }, 502);
 }
 
 async function readRoomExport(room: string): Promise<Record<string, unknown>> {
@@ -332,7 +385,19 @@ export async function GET(request: Request): Promise<Response> {
       const room = (url.searchParams.get("room") ?? "").trim();
       if (!ROOM_RE.test(room)) return json({ ok: false, error: "Invalid room name." }, 400);
       const limit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
-      return json({ ok: true, payload: await readRoom(room, Number.isFinite(limit) ? limit : 100) });
+      const sinceText = url.searchParams.get("since");
+      const since = sinceText === null ? undefined : sequenceFrom(sinceText);
+      if (sinceText !== null && since === undefined) return json({ ok: false, error: "Invalid room sequence." }, 400);
+      const waitSeconds = Math.max(0, Math.min(10, Number.parseInt(url.searchParams.get("wait") ?? "0", 10) || 0));
+      return json({ ok: true, payload: await readRoom(room, Number.isFinite(limit) ? limit : 100, since, waitSeconds) });
+    }
+    if (action === "did_note") {
+      const did = (url.searchParams.get("did") ?? "").trim();
+      if (!DID_RE.test(did)) return json({ ok: false, error: "Invalid DID." }, 400);
+      const fingerprint = await didFingerprint(did);
+      const ns = `did-${fingerprint.slice(0, 2)}`;
+      const key = fingerprint.slice(2);
+      return json({ ok: true, value: await readNote(ns, key), path: `/kv/${ns}/${key}` });
     }
     if (action === "tclk_export") {
       const room = (url.searchParams.get("room") ?? "").trim();
@@ -364,6 +429,14 @@ export async function POST(request: Request): Promise<Response> {
   if (body.action === "register_did") {
     try {
       return await registerDidNote(body);
+    } catch (error) {
+      const message = error instanceof Error && error.name === "AbortError" ? "Technocore timed out." : error instanceof Error ? error.message : "Technocore is unavailable.";
+      return json({ ok: false, error: message }, 502);
+    }
+  }
+  if (body.action === "update_did_note") {
+    try {
+      return await setDidNote(body);
     } catch (error) {
       const message = error instanceof Error && error.name === "AbortError" ? "Technocore timed out." : error instanceof Error ? error.message : "Technocore is unavailable.";
       return json({ ok: false, error: message }, 502);

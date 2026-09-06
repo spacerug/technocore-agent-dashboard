@@ -7,6 +7,7 @@ export type BrowserIdentity = {
   publicKey: Uint8Array;
   seed: Uint8Array;
   sourceName: string;
+  provider?: "file" | "generated" | "passkey";
 };
 
 export type SignedProof = {
@@ -153,6 +154,23 @@ async function importPrivateSeed(seed: Uint8Array): Promise<{ privateKey: Crypto
   return { privateKey, publicKey: base64urlDecode(jwk.x) };
 }
 
+export async function identityFromSeed(
+  seed: Uint8Array,
+  sourceName: string,
+  provider: BrowserIdentity["provider"] = "generated",
+): Promise<BrowserIdentity> {
+  const copiedSeed = new Uint8Array(seed);
+  const imported = await importPrivateSeed(copiedSeed);
+  return {
+    did: didForPublicKey(imported.publicKey),
+    privateKey: imported.privateKey,
+    publicKey: imported.publicKey,
+    seed: copiedSeed,
+    sourceName,
+    provider,
+  };
+}
+
 function collectDids(value: unknown, output: string[] = []): string[] {
   if (typeof value === "string" && value.startsWith("did:key:z")) output.push(value.trim());
   else if (Array.isArray(value)) value.forEach((child) => collectDids(child, output));
@@ -234,7 +252,7 @@ export async function loadIdentityJson(text: string, sourceName: string): Promis
     const imported = await importPrivateSeed(seed);
     const did = didForPublicKey(imported.publicKey);
     if (expectedDids.length === 0 || expectedDids.includes(did)) {
-      matches.push({ did, privateKey: imported.privateKey, publicKey: imported.publicKey, seed, sourceName });
+      matches.push({ did, privateKey: imported.privateKey, publicKey: imported.publicKey, seed, sourceName, provider: "file" });
     }
   }
   if (matches.length === 0) {
@@ -260,6 +278,7 @@ export async function generateIdentity(): Promise<BrowserIdentity> {
     publicKey: publicRaw,
     seed: base64urlDecode(privateJwk.d),
     sourceName: "new browser identity",
+    provider: "generated",
   };
 }
 

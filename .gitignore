@@ -11,3 +11,11 @@ weekly_activity_config.json
 weekly_activity_state.json
 weekly_activity.log
 .weekly_activity.lock
+node_modules/
+.next/
+web/node_modules/
+web/.next/
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local

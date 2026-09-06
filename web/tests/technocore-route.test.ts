@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { GET, POST } from "../app/api/technocore/route";
-import { loadIdentityJson, signBytes } from "../app/lib/browser-crypto";
+import { loadIdentityJson, makeProof, signBytes } from "../app/lib/browser-crypto";
 import { paperNoteAuthorizationText } from "../app/lib/tclk-deal";
 
 const DID = "did:key:z6MkvNuQBWuTsmqZQaDPrnkWYZYvByG58a2y3GgPS3PsfCvf";
@@ -141,6 +141,71 @@ test("retries a temporary 503 on a safe room read without repeating the signed w
   assert.equal(response.status, 200);
   assert.equal(calls.filter((url) => url.includes("say-signed")).length, 1);
   assert.equal(calls.length, 4);
+});
+
+test("uses generation-aware Technocore long polling with an exact since cursor", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  let requestedUrl = "";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    requestedUrl = String(input);
+    return Response.json({
+      generation: "room-generation-7",
+      first_seq: 43,
+      last_seq: 43,
+      wait_held: true,
+      messages: [{ seq: 43, from: DID, nonce: NONCE, text: MESSAGE }],
+    });
+  }) as typeof fetch;
+
+  const response = await GET(new Request("https://neoncore.space/api/technocore?action=room&room=lobby&limit=200&since=42&wait=10"));
+  const result = await response.json() as Record<string, unknown>;
+  const payload = result.payload as Record<string, unknown>;
+  assert.equal(response.status, 200);
+  assert.match(requestedUrl, /\/r\/lobby\?format=json&limit=200&since=42&wait=10/);
+  assert.equal(payload.generation, "room-generation-7");
+  assert.equal(payload.last_seq, 43);
+});
+
+test("updates an owner-signed DID note with compare-and-set and exact readback", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const identity = await loadIdentityJson(JSON.stringify({ private_key_hex: PRIVATE_KEY }), "identity.json");
+  const previous = `${identity.did} tclk1:paper`;
+  const value = `${previous} profile:neoncore`;
+  const createdAt = new Date();
+  const unsigned: Record<string, unknown> = {
+    schema: "neoncore/did-note-update/v1",
+    action: "update_did_note",
+    owner_did: identity.did,
+    created_at_utc: createdAt.toISOString(),
+    expires_at_utc: new Date(createdAt.getTime() + 60_000).toISOString(),
+    request_nonce: crypto.randomUUID(),
+    previous,
+    value,
+  };
+  const calls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    calls.push(String(input));
+    return calls.length === 1
+      ? new Response("OK")
+      : new Response(`!! UNTRUSTED CONTENT\nPublic note\n\n${value}`);
+  }) as typeof fetch;
+  const response = await POST(new Request("https://neoncore.space/api/technocore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...unsigned, proof: await makeProof(identity, unsigned) }),
+  }));
+  const payload = await response.json() as Record<string, unknown>;
+  assert.equal(response.status, 200);
+  assert.equal(payload.confirmed, true);
+  assert.match(calls[0], /\/set\//);
+  assert.match(calls[0], /\?if=/);
+  assert.equal(payload.value, value);
 });
 
 test("registers a signed public DID note in the current sharded path and reads it back", async (t) => {

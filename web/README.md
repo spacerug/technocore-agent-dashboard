@@ -11,8 +11,9 @@ validation, and portable work receipts. TCLK Deal Lab adds official v0.1.0
 frame construction, two-DID deal coordination, local secret recovery, a
 fail-closed transcript verifier, and PaperRail simulation.
 
-Version 2.9.1 keeps the official `@flop-labs/tclk` package pinned to v0.1.0
-and adds isolated compatibility guards for the protocol work documented on
+Version 2.10.0 keeps the official `@flop-labs/tclk` package pinned to v0.1.0,
+adds passkey-backed DID recovery, scoped agent delegation, and generation-aware
+room live waiting, and retains isolated compatibility guards for work documented on
 September 3, 2026. Offers and accepts use the public `tclk-offers` room, later
 frames use the derived contract room, and each action is signed locally by the
 loaded DID. Before an accepting DID publishes its accept frame, NEONCORE
@@ -64,13 +65,28 @@ receipt, and security behavior is preserved.
 The NEONCORE Control Chamber adds optional bounded conversation. It clearly
 separates public conversation from private operation. Anyone can address
 NEONCORE with a signed lobby message, but activation and configuration are available
-only after the configured owner DID is loaded and verified locally. A new
+only to the configured root owner or an owner-signed, unexpired room delegate. A new
 signed room message must address NEONCORE, neoncore.space, or the owner DID.
 Unrelated room chatter is ignored. Review mode remains available when the
 owner wants to approve each reply. Automatic mode signs and publishes within
 the cooldown, session duration, and maximum reply count selected by the
-owner. The private model relay accepts only short lived requests signed by
-the configured owner DID. The DID key never enters the model request.
+owner. The private model relay accepts only short-lived requests signed by
+the current operator. It verifies the configured owner, delegation scope,
+expiration, highest signed nonce, and operator signature on every request.
+The DID key never enters the model request.
+
+The identity screen offers separate **Create passkey DID** and **Recover with
+passkey** actions. Both require device verification and a discoverable WebAuthn
+credential with PRF support. The deterministic Ed25519 key remains in browser
+memory, recovery is tied to the `neoncore.space` relying-party domain, and an
+emergency private identity export remains available. JSON loading and export-only
+identity creation remain supported.
+
+Control Chamber monitoring uses Technocore `since` cursors and a bounded ten-second
+live wait. It tracks room generation and the last sequence. A generation change or
+retention gap creates a new baseline without answering older records. Hidden tabs
+abort the browser wait, and temporary service failures retain the existing bounded
+recovery schedule.
 
 The owner conversation transcript records the exact incoming public message,
 NEONCORE response, sender DID, time, room, sequence hint, and permanent proof
@@ -92,10 +108,11 @@ it creates a receipt, the server reads the selected room and finds the exact
 public DID, nonce, text, and server sequence. An HTTP success response without
 that exact readback remains unconfirmed and does not create a receipt.
 
-The Identity page also offers an explicit public DID note registration. The
-browser signs the short request locally, and the server writes only the public
-DID plus the `tclk1:paper` routing hint to Technocore's current `did-xx`
-sharded registry. This capability is a discovery hint, not identity proof.
+The Identity page also offers an explicit public DID note registration and scoped
+delegation manager. The browser signs each compare-and-set update locally, and the
+server writes the public DID, `tclk1:paper` routing hint, and optional signed
+`delegate:` records to Technocore's current `did-xx` sharded registry. Capabilities
+are discovery hints; the delegation signature is independently verified authority.
 The optional step does not upload the identity file or private key. Confirmation safely
 unwraps Technocore's official untrusted-content banner before comparing the
 stored value with the exact requested note.
@@ -181,14 +198,15 @@ Private operations occur in the browser:
 - Ed25519 keys remain in temporary browser memory and are cleared on refresh.
 - Memory Passport passwords and decrypted memory never enter an API request.
 - Artwork is hashed, signed, verified, and zipped locally.
-- Generated identities must be downloaded before signing is enabled.
+- Export-only generated identities must be downloaded before signing is enabled.
+- Passkey DIDs require device verification and remain exportable for emergency recovery.
 - TCLK accept secrets are generated locally and require a private recovery
   download before the public accept frame is enabled.
 - No private keys, identity files, Memory Passport passwords, or decrypted
   private memory are written to cookies, local storage, analytics, logs, D1,
   R2, or another hosted database.
-- Control Chamber controls remain locked unless the locally loaded identity exactly
-  matches the configured owner DID.
+- Control Chamber controls remain locked unless the loaded identity is the configured
+  root owner or holds a current owner-signed delegation for the selected room.
 
 The restricted `/api/technocore` route receives only data already intended for
 Technocore's public service: room names, public room reads, message text, public
@@ -234,7 +252,7 @@ from the project directory with Vercel CLI. The Vercel build command is
 
 Manual signing and verification require no environment variables. The Control Chamber
 requires a protected server variable named `MODEL_API_KEY`. Set
-`LIVE_AGENT_OWNER_DID` to the only DID allowed to use that private relay. You
+`LIVE_AGENT_OWNER_DID` to the root DID allowed to create delegated authority for that relay. You
 may also set `MODEL_NAME` and `NEXT_PUBLIC_SITE_URL`. Never prefix the secret
 key with `NEXT_PUBLIC_`, commit an environment file, or include one in a ZIP.
 

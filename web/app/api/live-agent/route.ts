@@ -1,8 +1,11 @@
-import { verifySignedDocument } from "../../lib/browser-crypto";
+import { canonicalJson, verifyBytes, verifySignedDocument } from "../../lib/browser-crypto";
+import { assessDelegation, didNotePath } from "../../lib/delegation";
 import { DEFAULT_LIVE_AGENT_OWNER_DID, isAddressedToLiveAgent } from "../../lib/live-agent-policy";
 import { evaluateReplyQuality } from "../../lib/live-agent-quality";
+import { TECHNOCORE_BASE_URL } from "../../lib/technocore-config";
 
-const REQUEST_SCHEMA = "neoncore/live-agent-request/v1";
+const REQUEST_SCHEMA_V1 = "neoncore/live-agent-request/v1";
+const REQUEST_SCHEMA_V2 = "neoncore/live-agent-request/v2";
 const DID_RE = /^did:key:z[1-9A-HJ-NP-Za-km-z]{40,100}$/;
 const ROOM_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const usedNonces = new Map<string, number>();
@@ -16,6 +19,76 @@ function json(value: unknown, status = 200): Response {
 
 function text(value: unknown, maximum: number): string {
   return typeof value === "string" ? value.trim().replace(/[\r\n]+/g, " ").slice(0, maximum) : "";
+}
+
+function noteValueFromResponse(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("!! UNTRUSTED CONTENT")) return trimmed;
+  const lines = trimmed.split(/\r?\n/);
+  const separator = lines.findIndex((line) => line.trim() === "");
+  return separator >= 0 ? lines.slice(separator + 1).join("\n").trim() : "";
+}
+
+async function readOwnerNote(ownerDid: string): Promise<string | null> {
+  const path = await didNotePath(ownerDid);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6_000);
+  try {
+    const response = await fetch(`${TECHNOCORE_BASE_URL}${path}`, {
+      headers: { Accept: "text/plain", "User-Agent": "NEONCORE-Control-Chamber/2.10" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (response.status === 404) return null;
+    const body = await response.text();
+    if (!response.ok) throw new Error(`Technocore returned HTTP ${response.status}.`);
+    return noteValueFromResponse(body) || null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function operatorAuthority(ownerDid: string, operatorDid: string, room: string) {
+  if (operatorDid === ownerDid) return { authorized: true, authority: "owner" as const };
+  const assessment = await assessDelegation(ownerDid, operatorDid, `r:${room}`, await readOwnerNote(ownerDid));
+  return {
+    authorized: assessment.authorized,
+    authority: assessment.authorized ? "delegate" as const : "none" as const,
+    reason: assessment.reason,
+    delegation: assessment.record,
+  };
+}
+
+async function verifyAgentRequest(body: Record<string, unknown>, operatorDid: string): Promise<void> {
+  if (body.schema === REQUEST_SCHEMA_V1) {
+    await verifySignedDocument(body, REQUEST_SCHEMA_V1);
+    return;
+  }
+  if (body.schema !== REQUEST_SCHEMA_V2) throw new Error("Unsupported request schema.");
+  const proof = body.proof as Record<string, unknown> | undefined;
+  if (!proof || proof.verification_method !== operatorDid || typeof proof.signature_base64url !== "string") {
+    throw new Error("Missing operator signature.");
+  }
+  const unsigned = { ...body };
+  delete unsigned.proof;
+  if (!(await verifyBytes(operatorDid, proof.signature_base64url, canonicalJson(unsigned)))) {
+    throw new Error("Invalid operator signature.");
+  }
+}
+
+export async function GET(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const allowedDid = process.env.LIVE_AGENT_OWNER_DID?.trim() || DEFAULT_LIVE_AGENT_OWNER_DID;
+  const operatorDid = text(url.searchParams.get("operator_did"), 150);
+  const room = text(url.searchParams.get("room") || "lobby", 48);
+  if (!operatorDid) return json({ ok: true, owner_did: allowedDid, authorized: false, authority: "none" });
+  if (!DID_RE.test(operatorDid) || !ROOM_RE.test(room)) return json({ ok: false, error: "The authority check fields are invalid." }, 400);
+  try {
+    const authority = await operatorAuthority(allowedDid, operatorDid, room);
+    return json({ ok: true, owner_did: allowedDid, operator_did: operatorDid, ...authority });
+  } catch {
+    return json({ ok: false, error: "Control authority could not be checked against the public DID note." }, 502);
+  }
 }
 
 export function finalizeAgentReply(value: string): string {
@@ -65,6 +138,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const ownerDid = text(body.owner_did, 150);
+  const operatorDid = body.schema === REQUEST_SCHEMA_V1 ? ownerDid : text(body.operator_did, 150);
   const allowedDid = process.env.LIVE_AGENT_OWNER_DID?.trim() || DEFAULT_LIVE_AGENT_OWNER_DID;
   const room = text(body.room, 48);
   const requestNonce = text(body.request_nonce, 100);
@@ -72,20 +146,27 @@ export async function POST(request: Request): Promise<Response> {
   const expiresAt = Date.parse(text(body.expires_at_utc, 40));
   const now = Date.now();
 
-  if (ownerDid !== allowedDid || !DID_RE.test(ownerDid)) return json({ ok: false, error: "This DID is not authorized for the private model relay." }, 403);
+  if (ownerDid !== allowedDid || !DID_RE.test(ownerDid) || !DID_RE.test(operatorDid)) return json({ ok: false, error: "This DID is not authorized for the private model relay." }, 403);
   if (!ROOM_RE.test(room) || !requestNonce || requestNonce.length > 100) return json({ ok: false, error: "The signed agent request fields are invalid." }, 400);
   if (!Number.isFinite(createdAt) || !Number.isFinite(expiresAt) || createdAt < now - 90_000 || createdAt > now + 30_000 || expiresAt <= now || expiresAt > now + 120_000) {
     return json({ ok: false, error: "The signed agent request expired." }, 401);
   }
 
   try {
-    await verifySignedDocument(body, REQUEST_SCHEMA);
+    await verifyAgentRequest(body, operatorDid);
   } catch {
     return json({ ok: false, error: "The Live Agent DID signature is invalid." }, 401);
   }
 
+  try {
+    const authority = await operatorAuthority(ownerDid, operatorDid, room);
+    if (!authority.authorized) return json({ ok: false, error: `This DID has no active ${`r:${room}`} delegation from the NEONCORE owner.` }, 403);
+  } catch {
+    return json({ ok: false, error: "The public delegation record could not be verified. Access failed closed." }, 503);
+  }
+
   for (const [nonce, expiry] of usedNonces) if (expiry <= now) usedNonces.delete(nonce);
-  const nonceKey = `${ownerDid}:${requestNonce}`;
+  const nonceKey = `${operatorDid}:${requestNonce}`;
   if (usedNonces.has(nonceKey)) return json({ ok: false, error: "This signed model request was already used." }, 409);
   usedNonces.set(nonceKey, expiresAt);
 
@@ -113,7 +194,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const modelName = process.env.MODEL_NAME?.trim() || "gpt-5.6-luna";
     const endpoint = ["https://api.", "open", "ai.com/v1/responses"].join("");
-    const recentOwnerReplies = safeContext.filter((item) => item.from === ownerDid).map((item) => item.text);
+    const recentOwnerReplies = safeContext.filter((item) => item.from === operatorDid || item.from === ownerDid).map((item) => item.text);
     let inputTokens = 0;
     let outputTokens = 0;
     let totalTokens = 0;
