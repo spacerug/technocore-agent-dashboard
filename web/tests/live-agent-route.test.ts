@@ -99,9 +99,13 @@ test("authorizes a signed, unexpired room-scoped delegated operator", async (t) 
   const previousOwner = process.env.LIVE_AGENT_OWNER_DID;
   const previousModelKey = process.env.MODEL_API_KEY;
   const originalFetch = globalThis.fetch;
+  const authorityRequests: RequestInit[] = [];
   process.env.LIVE_AGENT_OWNER_DID = root.did;
   delete process.env.MODEL_API_KEY;
-  globalThis.fetch = (async () => new Response(`!! UNTRUSTED CONTENT\nPublic owner note\n\n${note}`)) as typeof fetch;
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    authorityRequests.push(init ?? {});
+    return new Response(`!! UNTRUSTED CONTENT\nPublic owner note\n\n${note}`);
+  }) as typeof fetch;
   t.after(() => {
     globalThis.fetch = originalFetch;
     if (previousOwner === undefined) delete process.env.LIVE_AGENT_OWNER_DID;
@@ -115,6 +119,10 @@ test("authorizes a signed, unexpired room-scoped delegated operator", async (t) 
   assert.equal(authority.status, 200);
   assert.equal(authorityPayload.authorized, true);
   assert.equal(authorityPayload.authority, "delegate");
+  const authorityHeaders = new Headers(authorityRequests[0].headers);
+  assert.equal(authorityRequests[0].cache, "no-store");
+  assert.equal(authorityHeaders.get("Cache-Control"), "no-cache");
+  assert.equal(authorityHeaders.get("Pragma"), "no-cache");
 
   const response = await POST(new Request("https://neoncore.space/api/live-agent", {
     method: "POST",

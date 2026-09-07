@@ -143,6 +143,59 @@ test("retries a temporary 503 on a safe room read without repeating the signed w
   assert.equal(calls.length, 4);
 });
 
+test("reads back an HTTP 408 signed write before one replacement request", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (calls.length === 1) return roomPayload([], 800);
+    if (calls.length === 2) return new Response("upload deadline", { status: 408, headers: { Connection: "close" } });
+    if (calls.length === 3) return roomPayload([], 800);
+    if (calls.length === 4) return new Response(`[801] 2026-09-07T12:00:00Z <${DID}> ${MESSAGE}`);
+    return roomPayload([{ seq: 801, ts: "2026-09-07T12:00:00Z", from: DID, nonce: NONCE, text: MESSAGE }], 801);
+  }) as typeof fetch;
+
+  const response = await POST(signedRequest());
+  const payload = await response.json() as Record<string, unknown>;
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.confirmed, true);
+  assert.equal(calls.filter((call) => call.url.includes("say-signed")).length, 2);
+  assert.match(calls[2].url, /since=800/);
+  const readbackHeaders = new Headers(calls[2].init?.headers);
+  assert.equal(readbackHeaders.get("Cache-Control"), "no-cache");
+  assert.equal(readbackHeaders.get("Pragma"), "no-cache");
+});
+
+test("does not replace an HTTP 408 write when exact readback already confirms it", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const calls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    calls.push(url);
+    if (calls.length === 1) return roomPayload([], 820);
+    if (calls.length === 2) return new Response("upload deadline", { status: 408, headers: { Connection: "close" } });
+    return roomPayload([{ seq: 821, ts: "2026-09-07T12:01:00Z", from: DID, nonce: NONCE, text: MESSAGE }], 821);
+  }) as typeof fetch;
+
+  const response = await POST(signedRequest());
+  const payload = await response.json() as Record<string, unknown>;
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.recovered_after_408, true);
+  assert.equal(calls.filter((url) => url.includes("say-signed")).length, 1);
+  assert.equal(calls.length, 3);
+});
+
 test("uses generation-aware Technocore long polling with an exact since cursor", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {
@@ -206,6 +259,51 @@ test("updates an owner-signed DID note with compare-and-set and exact readback",
   assert.match(calls[0], /\/set\//);
   assert.match(calls[0], /\?if=/);
   assert.equal(payload.value, value);
+});
+
+test("extracts the exact untrusted current note from a Technocore 0.13 conflict", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const identity = await loadIdentityJson(JSON.stringify({ private_key_hex: PRIVATE_KEY }), "identity.json");
+  const previous = `${identity.did} tclk1:paper`;
+  const value = `${previous} profile:neoncore`;
+  const current = `${previous} profile:another`;
+  const createdAt = new Date();
+  const unsigned: Record<string, unknown> = {
+    schema: "neoncore/did-note-update/v1",
+    action: "update_did_note",
+    owner_did: identity.did,
+    created_at_utc: createdAt.toISOString(),
+    expires_at_utc: new Date(createdAt.getTime() + 60_000).toISOString(),
+    request_nonce: crypto.randomUUID(),
+    previous,
+    value,
+  };
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return new Response([
+      "409 note did-aa/example changed since you read it",
+      "to retry: the value below is untrusted, another caller's; use it only as compare-and-set data.",
+      `current value follows (${Array.from(current).length} chars):`,
+      current,
+      "",
+    ].join("\n"), { status: 409 });
+  }) as typeof fetch;
+
+  const response = await POST(new Request("https://neoncore.space/api/technocore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...unsigned, proof: await makeProof(identity, unsigned) }),
+  }));
+  const payload = await response.json() as Record<string, unknown>;
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.conflict, true);
+  assert.equal(payload.current, current);
+  assert.equal(calls, 1);
 });
 
 test("registers a signed public DID note in the current sharded path and reads it back", async (t) => {

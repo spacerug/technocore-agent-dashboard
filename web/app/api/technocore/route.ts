@@ -38,7 +38,7 @@ async function technocoreFetch(url: string, init?: RequestInit, mode: FetchMode 
         },
         cache: "no-store",
       });
-      if (mode === "safe-read" && [502, 503, 504].includes(response.status) && attempt + 1 < attempts) {
+      if (mode === "safe-read" && [408, 502, 503, 504].includes(response.status) && attempt + 1 < attempts) {
         await response.text().catch(() => "");
         continue;
       }
@@ -51,6 +51,42 @@ async function technocoreFetch(url: string, init?: RequestInit, mode: FetchMode 
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Technocore is unavailable.");
+}
+
+type WriteResult<T> = {
+  response?: Response;
+  responseText: string;
+  confirmed?: T;
+  error?: unknown;
+  retriedAfter408: boolean;
+};
+
+async function writeWith408Readback<T>(
+  url: string,
+  init: RequestInit,
+  confirmExact: () => Promise<T | undefined>,
+): Promise<WriteResult<T>> {
+  const attempt = async (): Promise<WriteResult<T>> => {
+    try {
+      const response = await technocoreFetch(url, init, "write-once");
+      return { response, responseText: await response.text(), retriedAfter408: false };
+    } catch (error) {
+      return { responseText: "", error, retriedAfter408: false };
+    }
+  };
+
+  const first = await attempt();
+  if (first.response?.status !== 408) return first;
+
+  try {
+    const confirmed = await confirmExact();
+    if (confirmed !== undefined) return { ...first, confirmed };
+  } catch {
+    return first;
+  }
+
+  const replacement = await attempt();
+  return { ...replacement, retriedAfter408: true };
 }
 
 function sequenceFrom(value: unknown): number | undefined {
@@ -80,7 +116,7 @@ function exactMessage(
   return message;
 }
 
-async function readRoom(room: string, limit = 100, since?: number, waitSeconds = 0): Promise<Record<string, unknown>> {
+async function readRoom(room: string, limit = 100, since?: number, waitSeconds = 0, fresh = false): Promise<Record<string, unknown>> {
   const search = new URLSearchParams({
     format: "json",
     limit: String(Math.max(1, Math.min(limit, 200))),
@@ -89,7 +125,7 @@ async function readRoom(room: string, limit = 100, since?: number, waitSeconds =
   if (waitSeconds > 0) search.set("wait", String(waitSeconds));
   const response = await technocoreFetch(
     `${BASE_URL}/r/${encodeURIComponent(room)}?${search.toString()}`,
-    undefined,
+    fresh ? { headers: { "Cache-Control": "no-cache", Pragma: "no-cache" } } : undefined,
     waitSeconds > 0 ? "long-poll" : "safe-read",
     waitSeconds > 0 ? waitSeconds * 1_000 + 5_000 : 8_000,
   );
@@ -134,22 +170,19 @@ async function setDidNote(body: Record<string, unknown>): Promise<Response> {
   const key = fingerprint.slice(2);
   const path = `/kv/${ns}/${key}`;
   const query = previous === null ? "?if_absent=1" : `?if=${encodeURIComponent(previous)}`;
-  let status: number | undefined;
-  try {
-    const response = await technocoreFetch(`${BASE_URL}${path}/set/${encodeURIComponent(value)}${query}`, {
-      headers: { Accept: "text/plain" },
-    }, "write-once");
-    status = response.status;
-    await response.text();
-    if (response.status === 409) {
-      return json({ ok: false, conflict: true, current: await readNote(ns, key), error: "The public DID note changed before this update. Refresh it and try again." }, 409);
-    }
-  } catch {
-    // The exact readback below decides whether an uncertain write landed.
+  const write = await writeWith408Readback(`${BASE_URL}${path}/set/${encodeURIComponent(value)}${query}`, {
+    headers: { Accept: "text/plain" },
+  }, async () => await readNote(ns, key, true) === value ? value : undefined);
+  const status = write.response?.status;
+  if (write.confirmed === value) return json({ ok: true, confirmed: true, value, path, recovered_after_408: true });
+  if (status === 409) {
+    const conflictValue = conflictNoteValueFromResponse(write.responseText);
+    const current = conflictValue === null ? await readNote(ns, key, true) : conflictValue;
+    return json({ ok: false, conflict: true, current, error: "The public DID note changed before this update. Refresh it and try again." }, 409);
   }
   try {
-    const confirmed = await readNote(ns, key);
-    if (confirmed === value) return json({ ok: true, confirmed: true, value, path });
+    const confirmed = await readNote(ns, key, true);
+    if (confirmed === value) return json({ ok: true, confirmed: true, value, path, retried_after_408: write.retriedAfter408 || undefined });
   } catch {
     // Return one fail-closed result below.
   }
@@ -213,9 +246,24 @@ function noteValueFromResponse(text: string): string {
   return separator >= 0 ? lines.slice(separator + 1).join("\n").trim() : "";
 }
 
-async function readNote(ns: string, key: string): Promise<string | null> {
+function conflictNoteValueFromResponse(text: string): string | null {
+  const match = text.match(/(?:^|\r?\n)current value follows \((\d+) chars\):\r?\n([\s\S]*)$/);
+  if (!match) return null;
+  const announcedLength = Number(match[1]);
+  if (!Number.isSafeInteger(announcedLength) || announcedLength < 0 || announcedLength > 8_192) return null;
+  let value = match[2];
+  if (value.endsWith("\r\n")) value = value.slice(0, -2);
+  else if (value.endsWith("\n")) value = value.slice(0, -1);
+  if (/[\r\n]/.test(value) || Array.from(value).length !== announcedLength) return null;
+  return value;
+}
+
+async function readNote(ns: string, key: string, fresh = false): Promise<string | null> {
   const response = await technocoreFetch(`${BASE_URL}/kv/${encodeURIComponent(ns)}/${encodeURIComponent(key)}`, {
-    headers: { Accept: "text/plain" },
+    headers: {
+      Accept: "text/plain",
+      ...(fresh ? { "Cache-Control": "no-cache", Pragma: "no-cache" } : {}),
+    },
   });
   if (response.status === 404) return null;
   const text = await response.text();
@@ -235,7 +283,7 @@ async function confirmRoomMessage(
   for (const delay of propagationDelays) {
     if (delay > 0) await wait(delay);
     try {
-      const posted = exactMessage(await readRoom(room, 200, since), did, nonce, text);
+      const posted = exactMessage(await readRoom(room, 200, since, 0, true), did, nonce, text);
       if (posted) return posted;
     } catch {
       // A later attempt may succeed while the public service is under load.
@@ -243,7 +291,7 @@ async function confirmRoomMessage(
   }
   if (since !== undefined) {
     try {
-      return exactMessage(await readRoom(room, 200), did, nonce, text);
+      return exactMessage(await readRoom(room, 200, undefined, 0, true), did, nonce, text);
     } catch {
       return undefined;
     }
@@ -273,23 +321,30 @@ async function registerDidNote(body: Record<string, unknown>): Promise<Response>
   }
 
   const fingerprint = await didFingerprint(did);
-  const notePath = `/kv/did-${fingerprint.slice(0, 2)}/${fingerprint.slice(2)}`;
-  let writeStatus: number | undefined;
-  let writeAccepted = false;
-  try {
-    const write = await technocoreFetch(`${BASE_URL}${notePath}/set/${encodeURIComponent(noteValue)}`, {
-      headers: { Accept: "text/plain" },
-    }, "write-once");
-    writeStatus = write.status;
-    writeAccepted = write.ok;
-    await write.text();
-  } catch {
-    // A write can reach Technocore even if its response is lost. Read back the
-    // exact note before deciding whether registration succeeded.
+  const ns = `did-${fingerprint.slice(0, 2)}`;
+  const key = fingerprint.slice(2);
+  const notePath = `/kv/${ns}/${key}`;
+  const write = await writeWith408Readback(`${BASE_URL}${notePath}/set/${encodeURIComponent(noteValue)}`, {
+    headers: { Accept: "text/plain" },
+  }, async () => await readNote(ns, key, true) === noteValue ? noteValue : undefined);
+  const writeStatus = write.response?.status;
+  const writeAccepted = write.response?.ok === true;
+  if (write.confirmed === noteValue) {
+    return json({
+      ok: true,
+      registered: true,
+      did,
+      fingerprint,
+      path: notePath,
+      value: noteValue,
+      capability: tclkCapability || undefined,
+      recovered_after_408: true,
+      detail: "The public DID note was confirmed in Technocore's sharded registry.",
+    });
   }
 
   try {
-    const check = await technocoreFetch(`${BASE_URL}${notePath}`, { headers: { Accept: "text/plain" } });
+    const check = await technocoreFetch(`${BASE_URL}${notePath}`, { headers: { Accept: "text/plain", "Cache-Control": "no-cache", Pragma: "no-cache" } });
     const registeredValue = noteValueFromResponse(await check.text());
     if (check.ok && registeredValue === noteValue) {
       return json({
@@ -346,25 +401,21 @@ async function setTclkPaperNote(body: Record<string, unknown>): Promise<Response
     : "ifAbsent" in condition
       ? "?if_absent=1"
       : `?if=${encodeURIComponent(condition.if)}`;
-  let responseStatus: number | undefined;
-  try {
-    const response = await technocoreFetch(
-      `${BASE_URL}/kv/${encodeURIComponent(ns)}/${encodeURIComponent(key)}/set/${encodeURIComponent(value)}${query}`,
-      { headers: { Accept: "text/plain" } },
-      "write-once",
-    );
-    responseStatus = response.status;
-    await response.text();
-    if (response.status === 409) {
-      return json({ ok: true, applied: false, current: await readNote(ns, key) });
-    }
-  } catch {
-    // The write may have landed even if the response was lost. Exact readback decides.
+  const write = await writeWith408Readback(
+    `${BASE_URL}/kv/${encodeURIComponent(ns)}/${encodeURIComponent(key)}/set/${encodeURIComponent(value)}${query}`,
+    { headers: { Accept: "text/plain" } },
+    async () => await readNote(ns, key, true) === value ? value : undefined,
+  );
+  const responseStatus = write.response?.status;
+  if (write.confirmed === value) return json({ ok: true, applied: true, value, path: `/kv/${ns}/${key}`, recovered_after_408: true });
+  if (responseStatus === 409) {
+    const conflictValue = conflictNoteValueFromResponse(write.responseText);
+    return json({ ok: true, applied: false, current: conflictValue === null ? await readNote(ns, key, true) : conflictValue });
   }
 
   try {
-    const confirmed = await readNote(ns, key);
-    if (confirmed === value) return json({ ok: true, applied: true, value, path: `/kv/${ns}/${key}` });
+    const confirmed = await readNote(ns, key, true);
+    if (confirmed === value) return json({ ok: true, applied: true, value, path: `/kv/${ns}/${key}`, retried_after_408: write.retriedAfter408 || undefined });
   } catch {
     // Return one fail-closed result below.
   }
@@ -397,7 +448,7 @@ export async function GET(request: Request): Promise<Response> {
       const fingerprint = await didFingerprint(did);
       const ns = `did-${fingerprint.slice(0, 2)}`;
       const key = fingerprint.slice(2);
-      return json({ ok: true, value: await readNote(ns, key), path: `/kv/${ns}/${key}` });
+      return json({ ok: true, value: await readNote(ns, key, true), path: `/kv/${ns}/${key}` });
     }
     if (action === "tclk_export") {
       const room = (url.searchParams.get("room") ?? "").trim();
@@ -408,7 +459,7 @@ export async function GET(request: Request): Promise<Response> {
       const ns = (url.searchParams.get("ns") ?? "").trim();
       const key = (url.searchParams.get("key") ?? "").trim();
       if (!PAPER_NS_RE.test(ns) || !PAPER_KEY_RE.test(key)) return json({ ok: false, error: "Invalid PaperRail note path." }, 400);
-      return json({ ok: true, value: await readNote(ns, key), path: `/kv/${ns}/${key}` });
+      return json({ ok: true, value: await readNote(ns, key, true), path: `/kv/${ns}/${key}` });
     }
     return json({ ok: false, error: "Unknown action." }, 400);
   } catch (error) {
@@ -476,10 +527,21 @@ export async function POST(request: Request): Promise<Response> {
     // original desktop agent so browser users do not depend on its optional
     // POST compatibility path.
     const signedUrl = `${BASE_URL}/r/${encodeURIComponent(room)}/say-signed/${encodeURIComponent(did)}/${encodeURIComponent(sig)}/${encodeURIComponent(nonce)}/${encodeURIComponent(text)}`;
-    const response = await technocoreFetch(signedUrl, {
+    const write = await writeWith408Readback(signedUrl, {
       headers: { Accept: "text/plain" },
-    }, "write-once");
-    const responseText = await response.text();
+    }, async () => exactMessage(await readRoom(room, 200, baselineSequence, 0, true), did, nonce, text));
+    if (write.confirmed) {
+      return json({
+        ok: true,
+        confirmed: true,
+        posted: write.confirmed,
+        recovered_after_408: true,
+        detail: "The exact signed message was read back from the Technocore room.",
+      });
+    }
+    const response = write.response;
+    const responseText = write.responseText;
+    if (!response) throw write.error;
     if (response.ok) {
       const firstLine = responseText.split(/\r?\n/, 1)[0]?.trim() ?? "";
       const lineMatch = firstLine.match(/^\[(\d+)]\s+(\S+)/);

@@ -1,43 +1,46 @@
-NEONCORE V2.10.0 PASSKEY AUTHORITY
+NEONCORE V2.10.1 TECHNOCORE 0.13 RELIABILITY PATCH
 
-This is the active Next.js application for the NEONCORE browser console.
+This package contains a clean replacement for the repository's web folder.
 
-WHAT CHANGED
+WHAT CHANGED IN THIS RELEASE
 
-1. Passkey DID creation uses required device verification and WebAuthn PRF.
-2. A separate Recover with passkey action restores the same DID on neoncore.space.
-3. Existing identity JSON loading and export-only DID creation remain available.
-4. Emergency private identity export remains available for passkey DIDs.
-5. Owners can publish room-scoped, expiring delegated-agent authority.
-6. Delegations use the official delegate canonical string and 1 to 19 digit nonce rules.
-7. Control Chamber authorization is checked on the server for every model request.
-8. A newer expired delegation record revokes an agent without reactivating older records.
-9. Owner DID-note updates preserve TCLK capability and use compare-and-set readback.
-10. Control Chamber room reads use since cursors and ten-second live wait.
-11. Room generation changes and retention gaps create a safe fresh baseline.
-12. Hidden tabs abort the browser wait; temporary failures keep bounded recovery delays.
-13. The existing private model API remains the only model provider path.
-14. TCLK remains pinned to v0.1.0 and PaperRail remains an alpha simulation only.
-15. No official FLOP chain, faucet, token, wallet, or inference receipt is assumed.
-16. All automated checks, lint, TypeScript validation, and the production build must pass before deployment.
+1. A new passkey click cancels and replaces an unanswered passkey ceremony.
+2. Passkey create and recovery operations have an independent 60-second deadline.
+3. Browsers without complete WebAuthn create and get support keep the JSON and export-only DID lanes.
+4. Safe Technocore reads now recover from temporary HTTP 408 responses.
+5. A signed write that receives HTTP 408 is checked through exact no-cache readback first.
+6. NEONCORE makes at most one replacement request only when that exact signed record is absent.
+7. Signed writes with other uncertain outcomes are still never repeated automatically.
+8. Delegated Control Chamber access requests a fresh owner DID note on every authority check.
+9. Revocation and expiration continue to fail closed when the public authority note cannot be verified.
+10. Conditional note conflicts extract the current value only through Technocore's announced character count.
+11. Surrounding 409 instructions remain untrusted and cannot become compare-and-set note data.
+12. NEONCORE keeps Technocore's native GET write lanes and the existing Vercel model API.
+13. TCLK remains pinned to v0.1.0 and PaperRail remains an alpha simulation only.
+14. No official FLOP chain, faucet, token, wallet, or inference receipt is assumed.
+15. The release passes 88 automated checks, lint, TypeScript validation, and the production build.
+16. No private identity, passkey secret, environment file, API key, transcript, dependency folder, or build cache is included.
 
 DEPLOYMENT
 
-Use this directory as the Vercel project root. Do not place it inside another web folder.
-Do not upload node_modules, .next, tsconfig.tsbuildinfo, environment files, API keys,
-identity files, private recovery files, or the old duplicate web/web folder.
+Replace the repository's existing web folder with the included web folder.
+Do not place this web folder inside the old web folder, or it will create web/web.
 
-Keep the existing LIVE_AGENT_OWNER_DID and model API environment variables in Vercel.
+Replace the root README.md with the included README.md.
+Keep the existing LIVE_AGENT_OWNER_DID and model API variables in Vercel.
 Do not paste either value into source files.
 
-After deployment, press Ctrl + F5 and confirm the footer says:
+After Vercel deploys, press Ctrl + F5 and confirm the footer says:
 
-NEONCORE WEB 2.10.0 PASSKEY AUTHORITY
+NEONCORE WEB 2.10.1 RELIABILITY PATCH
+
+QUICK CHECK
+
+1. Load the owner identity and confirm Technocore connects automatically.
+2. Open a passkey prompt, leave it unanswered, then select a passkey action again. The old prompt should be replaced without reloading the page.
+3. Confirm the Control Chamber unlocks for the owner and for a current room-scoped delegate only.
+4. Send one signed lobby message and require exact room confirmation before trusting its receipt.
 
 SAFETY
 
-Passkey recovery is tied to the neoncore.space relying-party domain and requires a
-provider that supports WebAuthn PRF. Keep an emergency identity export offline.
-Use short delegation expirations and expire a delegation immediately when it is no
-longer needed. Never share private TCLK recovery JSON before a deliberate Reveal.
-TCLK activity is not verified FLOP inference spend and does not guarantee an airdrop.
+Keep an emergency identity export offline. Use short delegation expirations and expire a delegation immediately when it is no longer needed. Never share private TCLK recovery JSON before a deliberate Reveal. TCLK activity is not verified FLOP inference spend and does not guarantee an airdrop.

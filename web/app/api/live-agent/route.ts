@@ -35,7 +35,12 @@ async function readOwnerNote(ownerDid: string): Promise<string | null> {
   const timeout = setTimeout(() => controller.abort(), 6_000);
   try {
     const response = await fetch(`${TECHNOCORE_BASE_URL}${path}`, {
-      headers: { Accept: "text/plain", "User-Agent": "NEONCORE-Control-Chamber/2.10" },
+      headers: {
+        Accept: "text/plain",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+        "User-Agent": "NEONCORE-Control-Chamber/2.10.1",
+      },
       cache: "no-store",
       signal: controller.signal,
     });

@@ -47,6 +47,11 @@ test("adds passkey recovery, scoped delegation, and generation-aware live wait",
   assert.match(passkey, /residentKey: "required"/);
   assert.match(passkey, /userVerification: "required"/);
   assert.match(passkey, /prf:/);
+  assert.match(passkey, /activePasskeyCeremony\?\.abort\(\)/);
+  assert.match(passkey, /PASSKEY_CEREMONY_TIMEOUT_MS/);
+  assert.match(passkey, /navigator\.credentials\.get\(\{ publicKey, signal \}\)/);
+  assert.match(passkey, /navigator\.credentials\.create\(\{ publicKey, signal \}\)/);
+  assert.match(dashboard, /busy\.startsWith\("Passkey request open"\)/);
   assert.match(delegation, /delegate\|\$\{rootDid\}/);
   assert.match(agent, /wait: 10/);
   assert.match(agent, /generationChanged/);
@@ -84,7 +89,7 @@ test("uses the readable NEONCORE Matrix Command Center visual system", () => {
   assert.match(css, /\.identity-hero/);
   assert.match(css, /\.primary-nav/);
   assert.match(css, /focus-visible/);
-  assert.match(dashboard, /WEB 2\.10\.0 · PASSKEY AUTHORITY/);
+  assert.match(dashboard, /WEB 2\.10\.1 · RELIABILITY PATCH/);
   assert.match(dashboard, /Your agent has a DID/);
   assert.match(dashboard, /Current session status/);
   assert.match(css, /@media \(max-width: 1680px\)/);
@@ -97,7 +102,7 @@ test("renders accessible DID filtering above a motion-safe Matrix background", (
   const css = readFileSync("app/globals.css", "utf8");
   assert.match(dashboard, /className="check pixel-check"/);
   assert.match(dashboard, /className="pixel-check-box"/);
-  assert.match(dashboard, /WEB 2\.10\.0 · PASSKEY AUTHORITY/);
+  assert.match(dashboard, /WEB 2\.10\.1 · RELIABILITY PATCH/);
   assert.match(matrix, /prefers-reduced-motion: reduce/);
   assert.match(matrix, /aria-hidden="true"/);
   assert.match(css, /\.matrix-rain/);

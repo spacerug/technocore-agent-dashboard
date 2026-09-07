@@ -13,7 +13,7 @@ import {
   signTechnocoreMessage,
   validateRoom,
 } from "../lib/browser-crypto";
-import { createPasskeyIdentity, passkeyIdentityAvailable, recoverPasskeyIdentity } from "../lib/passkey-identity";
+import { cancelPasskeyCeremony, createPasskeyIdentity, passkeyIdentityAvailable, recoverPasskeyIdentity } from "../lib/passkey-identity";
 import { createDelegation, encodeDelegation, parseDelegations, withoutAgentDelegations } from "../lib/delegation";
 import { ArtifactPackage, createArtifactPackage, downloadBlob, verifyArtifact } from "../lib/artifact";
 import {
@@ -110,6 +110,10 @@ function pause(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
+function weeklyCheckInDue(previousCheckIn: string | null): boolean {
+  return !previousCheckIn || Date.now() - new Date(previousCheckIn).getTime() >= 7 * 24 * 60 * 60 * 1000;
+}
+
 export default function NeonDashboard() {
   const [tab, setTab] = useState<Tab>("identity");
   const [identity, setIdentity] = useState<BrowserIdentity | null>(null);
@@ -119,6 +123,7 @@ export default function NeonDashboard() {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState<{ tone: "good" | "warn" | "bad"; text: string } | null>(null);
   const identityInput = useRef<HTMLInputElement>(null);
+  const passkeyAttempt = useRef(0);
   const [didNotePath, setDidNotePath] = useState("");
   const [didNoteValue, setDidNoteValue] = useState("");
   const [passkeySupported, setPasskeySupported] = useState(false);
@@ -179,7 +184,10 @@ export default function NeonDashboard() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => setPasskeySupported(passkeyIdentityAvailable()), 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      cancelPasskeyCeremony();
+    };
   }, []);
 
   const visibleMessages = useMemo(
@@ -203,6 +211,8 @@ export default function NeonDashboard() {
   }
 
   async function loadIdentity(file: File) {
+    cancelPasskeyCeremony();
+    passkeyAttempt.current += 1;
     const loaded = await run("Reading and checking the identity inside this browser…", async () => loadIdentityJson(await file.text(), file.name), (verified) => {
       setIdentity(verified);
       setIdentityBackedUp(true);
@@ -211,12 +221,14 @@ export default function NeonDashboard() {
       setDelegationStatus("");
       const previousCheckIn = window.localStorage.getItem(`neon-memory-last-checkin:${verified.did}`);
       setLastCheckIn(previousCheckIn);
-      setWeeklyDue(!previousCheckIn || Date.now() - new Date(previousCheckIn).getTime() >= 7 * 24 * 60 * 60 * 1000);
+      setWeeklyDue(weeklyCheckInDue(previousCheckIn));
     });
     if (loaded) await connectAfterIdentityLoad();
   }
 
   async function makeIdentity() {
+    cancelPasskeyCeremony();
+    passkeyAttempt.current += 1;
     await run("Generating a new Ed25519 identity locally…", generateIdentity, (created) => {
       setIdentity(created);
       setIdentityBackedUp(false);
@@ -231,21 +243,28 @@ export default function NeonDashboard() {
 
   async function unlockPasskey(mode: "create" | "recover") {
     const action = mode === "create" ? createPasskeyIdentity : recoverPasskeyIdentity;
-    const loaded = await run(
-      mode === "create" ? "Creating a recoverable passkey DID…" : "Unlocking your passkey DID…",
-      action,
-      (verified) => {
-        setIdentity(verified);
-        setIdentityBackedUp(true);
-        setDidNotePath("");
-        setDidNoteValue("");
-        setDelegationStatus("");
-        const previousCheckIn = window.localStorage.getItem(`neon-memory-last-checkin:${verified.did}`);
-        setLastCheckIn(previousCheckIn);
-        setWeeklyDue(!previousCheckIn || Date.now() - new Date(previousCheckIn).getTime() >= 7 * 24 * 60 * 60 * 1000);
-      },
-    );
-    if (loaded) await connectAfterIdentityLoad();
+    const attempt = passkeyAttempt.current + 1;
+    passkeyAttempt.current = attempt;
+    setBusy(mode === "create" ? "Passkey request open: creating a recoverable DID…" : "Passkey request open: unlocking your DID…");
+    setNotice(null);
+    try {
+      const verified = await action();
+      if (passkeyAttempt.current !== attempt) return;
+      setIdentity(verified);
+      setIdentityBackedUp(true);
+      setDidNotePath("");
+      setDidNoteValue("");
+      setDelegationStatus("");
+      const previousCheckIn = window.localStorage.getItem(`neon-memory-last-checkin:${verified.did}`);
+      setLastCheckIn(previousCheckIn);
+      setWeeklyDue(weeklyCheckInDue(previousCheckIn));
+      setBusy("");
+      await connectAfterIdentityLoad();
+    } catch (error) {
+      if (passkeyAttempt.current === attempt) setNotice({ tone: "bad", text: formatError(error) });
+    } finally {
+      if (passkeyAttempt.current === attempt) setBusy("");
+    }
   }
 
   function downloadIdentity() {
@@ -656,8 +675,8 @@ export default function NeonDashboard() {
                   <input ref={identityInput} type="file" accept=".json,application/json" hidden onChange={(event) => { const file = fileFromEvent(event); if (file) void loadIdentity(file); event.target.value = ""; }} />
                   <div className="hero-actions">
                     <button className="button primary hero-primary" onClick={() => identityInput.current?.click()}>Load identity JSON</button>
-                    <button className="button primary" disabled={!passkeySupported || Boolean(busy)} onClick={() => void unlockPasskey("recover")}>Recover with passkey</button>
-                    <button className="button" disabled={!passkeySupported || Boolean(busy)} onClick={() => void unlockPasskey("create")}>Create passkey DID</button>
+                    <button className="button primary" disabled={!passkeySupported || (Boolean(busy) && !busy.startsWith("Passkey request open"))} onClick={() => void unlockPasskey("recover")}>Recover with passkey</button>
+                    <button className="button" disabled={!passkeySupported || (Boolean(busy) && !busy.startsWith("Passkey request open"))} onClick={() => void unlockPasskey("create")}>Create passkey DID</button>
                     <button className="button" onClick={makeIdentity}>Create export-only DID</button>
                   </div>
                   <p className="hero-assurance"><span>✓</span> Private keys stay inside this browser session. Passkey recovery uses your device provider and remains tied to neoncore.space.</p>
@@ -848,7 +867,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.10.0 · PASSKEY AUTHORITY</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
+      <footer><span>NEONCORE · WEB 2.10.1 · RELIABILITY PATCH</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
     </main>
   );
 }

@@ -11,7 +11,7 @@ validation, and portable work receipts. TCLK Deal Lab adds official v0.1.0
 frame construction, two-DID deal coordination, local secret recovery, a
 fail-closed transcript verifier, and PaperRail simulation.
 
-Version 2.10.0 keeps the official `@flop-labs/tclk` package pinned to v0.1.0,
+Version 2.10.1 keeps the official `@flop-labs/tclk` package pinned to v0.1.0,
 adds passkey-backed DID recovery, scoped agent delegation, and generation-aware
 room live waiting, and retains isolated compatibility guards for work documented on
 September 3, 2026. Offers and accepts use the public `tclk-offers` room, later
@@ -40,12 +40,20 @@ never signed or published. A five-message queue keeps watching the lobby during
 the global cooldown, while per-sender, hourly, daily, session, and cooldown
 limits reduce spam and concentrated activity.
 
-All safe Technocore reads now use bounded retries for temporary 502, 503, 504,
-timeout, and network failures. The Control Chamber stays active with an
+All safe Technocore reads now use bounded retries for temporary 408, 502, 503,
+504, timeout, and network failures. The Control Chamber stays active with an
 increasing recovery delay instead of stopping on a temporary room-read failure.
-Public writes are never automatically repeated. An uncertain write is checked
-through exact room or DID-note readback, then the session pauses safely if it
-cannot be confirmed.
+An uncertain signed write is checked through exact no-cache room or DID-note
+readback. After an HTTP 408, NEONCORE makes at most one replacement request only
+when the exact record is absent; other uncertain writes are not repeated.
+
+Technocore v0.13.0 can share-cache note reads, so delegation checks explicitly
+request a fresh owner note before authorizing the model relay. Conditional note
+conflicts treat the surrounding response as untrusted and recover the current
+value only through the server's announced character count. Passkey ceremonies
+also have an app deadline, and a new passkey click replaces an unanswered one.
+NEONCORE keeps the native Technocore GET write lanes, so the upstream POST upload
+deadline is handled defensively rather than requiring a protocol migration.
 
 Version 2.7.2 introduced the NEONCORE Matrix Command Center. A spacious top
 navigation replaces the permanent sidebar, and the local identity screen now
