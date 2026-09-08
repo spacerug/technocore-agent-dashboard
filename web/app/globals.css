@@ -698,7 +698,8 @@ body::after {
     radial-gradient(circle at 50% 20%, transparent, rgba(1, 5, 3, .42) 72%);
 }
 
-.topbar, .workspace, footer { position: relative; z-index: 3; }
+.topbar { position: relative; z-index: 100; }
+.workspace, footer { position: relative; z-index: 3; }
 
 .topbar {
   position: sticky;
@@ -707,9 +708,10 @@ body::after {
   padding: 0 22px;
   border: 0;
   border-bottom: 1px solid rgba(124, 255, 155, .13);
-  background: rgba(2, 8, 5, .8);
+  background: rgba(2, 8, 5, .97);
   box-shadow: 0 18px 50px rgba(0, 0, 0, .28);
   backdrop-filter: blur(24px) saturate(1.25);
+  isolation: isolate;
 }
 
 .topbar::after { display: none; }

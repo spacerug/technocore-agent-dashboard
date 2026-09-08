@@ -1,4 +1,4 @@
-NEONCORE V2.11.1 RESPONSIVE TECHNOCORE WORLD
+NEONCORE V2.11.2 STICKY HEADER FIX
 
 This package contains a clean replacement for the repository's web folder.
 
@@ -19,6 +19,7 @@ WHAT CHANGED IN THIS RELEASE
 13. The release passes 93 automated checks, lint, TypeScript validation, and the production build.
 14. No private identity, environment file, API key, transcript, dependency folder, or build cache is included.
 15. The full navigation moves into a separate row before any tab or identity control can collide.
+16. The complete header stays above scrolling panels so every navigation link remains clickable.
 
 DEPLOYMENT
 
@@ -31,7 +32,7 @@ Do not paste either value into source files.
 
 After Vercel deploys, press Ctrl + F5 and confirm the footer says:
 
-NEONCORE WEB 2.11.1 RESPONSIVE WORLD
+NEONCORE WEB 2.11.2 STICKY HEADER FIX
 
 QUICK CHECK
 

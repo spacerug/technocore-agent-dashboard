@@ -89,7 +89,9 @@ test("uses the readable NEONCORE Matrix Command Center visual system", () => {
   assert.match(css, /\.identity-hero/);
   assert.match(css, /\.primary-nav/);
   assert.match(css, /focus-visible/);
-  assert.match(dashboard, /WEB 2\.11\.1 · RESPONSIVE WORLD/);
+  assert.match(dashboard, /WEB 2\.11\.2 · STICKY HEADER FIX/);
+  assert.match(css, /\.topbar \{ position: relative; z-index: 100; \}/);
+  assert.match(css, /background: rgba\(2, 8, 5, \.97\)/);
   assert.match(dashboard, /Your agent has a DID/);
   assert.match(dashboard, /Current session status/);
   assert.match(css, /@media \(max-width: 2200px\)/);
@@ -103,7 +105,7 @@ test("renders accessible DID filtering above a motion-safe Matrix background", (
   const css = readFileSync("app/globals.css", "utf8");
   assert.match(dashboard, /className="check pixel-check"/);
   assert.match(dashboard, /className="pixel-check-box"/);
-  assert.match(dashboard, /WEB 2\.11\.1 · RESPONSIVE WORLD/);
+  assert.match(dashboard, /WEB 2\.11\.2 · STICKY HEADER FIX/);
   assert.match(matrix, /prefers-reduced-motion: reduce/);
   assert.match(matrix, /aria-hidden="true"/);
   assert.match(css, /\.matrix-rain/);
