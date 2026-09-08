@@ -1219,9 +1219,11 @@ footer {
 @keyframes core-spin { to { transform: rotate(360deg); } }
 @keyframes core-spin-reverse { to { transform: rotate(-360deg); } }
 
-@media (max-width: 1680px) {
+@media (max-width: 2200px) {
   .topbar { height: auto; padding-block: 12px; }
   .topbar-inner { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 8px; }
+  .brand { grid-column: 1; grid-row: 1; }
+  .top-actions { grid-column: 3; grid-row: 1; justify-self: end; }
   .primary-nav {
     grid-column: 1 / -1;
     grid-row: 2;
@@ -1256,6 +1258,8 @@ footer {
 
 @media (max-width: 700px) {
   .topbar-inner { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .brand { grid-column: 1; }
+  .top-actions { grid-column: 2; }
   .brand small, .service-pill { display: none; }
   .brand strong { font-size: 12px; }
   .header-action { min-height: 34px; padding-inline: 11px; font-size: 8px; }

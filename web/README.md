@@ -11,7 +11,9 @@ validation, and portable work receipts. TCLK Deal Lab adds official v0.1.0
 frame construction, two-DID deal coordination, local secret recovery, a
 fail-closed transcript verifier, and PaperRail simulation.
 
-Version 2.11.0 adds **Technocore World**, a public read-only 3D observatory.
+Version 2.11.1 adds **Technocore World**, a public read-only 3D observatory,
+and moves the complete tool navigation into a protected second header row at
+desktop widths up to 2200 pixels so tabs cannot collide with identity controls.
 It maps the official live room directory and a selected room's recent speaker
 activity onto an interactive Matrix-style globe. Public identifiers receive
 stable virtual coordinates so the map remains consistent between refreshes.

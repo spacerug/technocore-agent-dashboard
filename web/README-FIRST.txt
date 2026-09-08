@@ -1,4 +1,4 @@
-NEONCORE V2.11.0 TECHNOCORE WORLD
+NEONCORE V2.11.1 RESPONSIVE TECHNOCORE WORLD
 
 This is the active Next.js application for the NEONCORE browser console.
 
@@ -13,6 +13,7 @@ WHAT CHANGED
 7. Labels coordinates as virtual and activity arcs as message-order transitions only.
 8. Existing identity, Control Chamber, Proof Lab, TCLK, and FLOP readiness behavior remains intact.
 9. The release passes 93 automated checks, lint, TypeScript validation, and the production build.
+10. The complete navigation moves into a protected second row before controls can collide.
 
 DEPLOYMENT
 
@@ -25,7 +26,7 @@ Do not paste either value into source files.
 
 After deployment, press Ctrl + F5 and confirm the footer says:
 
-NEONCORE WEB 2.11.0 TECHNOCORE WORLD
+NEONCORE WEB 2.11.1 RESPONSIVE WORLD
 
 SAFETY
 
