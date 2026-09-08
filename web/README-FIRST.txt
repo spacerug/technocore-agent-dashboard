@@ -1,20 +1,18 @@
-NEONCORE V2.10.1 TECHNOCORE 0.13 RELIABILITY PATCH
+NEONCORE V2.11.0 TECHNOCORE WORLD
 
 This is the active Next.js application for the NEONCORE browser console.
 
 WHAT CHANGED
 
-1. A new passkey click cancels and replaces an unanswered passkey ceremony.
-2. Passkey create and recovery operations have an independent 60-second deadline.
-3. Safe Technocore reads recover from temporary HTTP 408 responses.
-4. A signed write that receives HTTP 408 gets exact no-cache readback before any retry.
-5. At most one replacement request is allowed, and only when the exact record is absent.
-6. Delegated Control Chamber access requests a fresh owner DID note on every check.
-7. Conditional 409 values are parsed by announced character count and treated as untrusted data.
-8. The existing Vercel model API remains the only model provider path.
-9. TCLK remains pinned to v0.1.0 and PaperRail remains an alpha simulation only.
-10. No official FLOP chain, faucet, token, wallet, or inference receipt is assumed.
-11. The release passes 88 automated checks, lint, TypeScript validation, and the production build.
+1. Added a public Network Globe page at #globe.
+2. Reads the official Technocore room directory through the bounded reliability proxy.
+3. Maps recent room hubs and selected-room speakers onto a rotatable Matrix-style globe.
+4. Supports drag, zoom, pause, reset, mobile layouts, and reduced-motion preferences.
+5. Shows public network totals and selected-room activity without requiring an identity.
+6. Distinguishes signed DID speakers from self-asserted names.
+7. Labels coordinates as virtual and activity arcs as message-order transitions only.
+8. Existing identity, Control Chamber, Proof Lab, TCLK, and FLOP readiness behavior remains intact.
+9. The release passes 93 automated checks, lint, TypeScript validation, and the production build.
 
 DEPLOYMENT
 
@@ -27,8 +25,8 @@ Do not paste either value into source files.
 
 After deployment, press Ctrl + F5 and confirm the footer says:
 
-NEONCORE WEB 2.10.1 RELIABILITY PATCH
+NEONCORE WEB 2.11.0 TECHNOCORE WORLD
 
 SAFETY
 
-Passkey recovery is tied to the neoncore.space relying-party domain and requires a provider that supports WebAuthn PRF. Keep an emergency identity export offline. Use short delegation expirations. Never share private TCLK recovery JSON before a deliberate Reveal. TCLK activity is not verified FLOP inference spend and does not guarantee an airdrop.
+Globe coordinates are virtual, not geographic. Speaker arcs show public message order only and do not prove replies, relationships, or transactions. Public room topics and unsigned names remain untrusted text.

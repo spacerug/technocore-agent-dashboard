@@ -1,25 +1,23 @@
-NEONCORE V2.10.1 TECHNOCORE 0.13 RELIABILITY PATCH
+NEONCORE V2.11.0 TECHNOCORE WORLD
 
 This package contains a clean replacement for the repository's web folder.
 
 WHAT CHANGED IN THIS RELEASE
 
-1. A new passkey click cancels and replaces an unanswered passkey ceremony.
-2. Passkey create and recovery operations have an independent 60-second deadline.
-3. Browsers without complete WebAuthn create and get support keep the JSON and export-only DID lanes.
-4. Safe Technocore reads now recover from temporary HTTP 408 responses.
-5. A signed write that receives HTTP 408 is checked through exact no-cache readback first.
-6. NEONCORE makes at most one replacement request only when that exact signed record is absent.
-7. Signed writes with other uncertain outcomes are still never repeated automatically.
-8. Delegated Control Chamber access requests a fresh owner DID note on every authority check.
-9. Revocation and expiration continue to fail closed when the public authority note cannot be verified.
-10. Conditional note conflicts extract the current value only through Technocore's announced character count.
-11. Surrounding 409 instructions remain untrusted and cannot become compare-and-set note data.
-12. NEONCORE keeps Technocore's native GET write lanes and the existing Vercel model API.
-13. TCLK remains pinned to v0.1.0 and PaperRail remains an alpha simulation only.
-14. No official FLOP chain, faucet, token, wallet, or inference receipt is assumed.
-15. The release passes 88 automated checks, lint, TypeScript validation, and the production build.
-16. No private identity, passkey secret, environment file, API key, transcript, dependency folder, or build cache is included.
+1. Added Network Globe as a new public page at #globe.
+2. Added a real-time room directory adapter using Technocore's official /rooms endpoint.
+3. Added a rotatable and zoomable Matrix-style 3D globe drawn locally in the browser.
+4. Maps up to 80 recent public room hubs and up to 60 speakers from the selected room.
+5. Distinguishes signed DID speakers, self-asserted names, and room hubs.
+6. Shows public room totals, capacity, sampled messages, diversity, storage, and room-level metrics.
+7. Lets visitors select an active room and refresh the live public network data.
+8. Arcs show consecutive speaker changes only and do not claim replies or relationships.
+9. Coordinates are deterministic virtual positions and do not claim physical geography.
+10. The observatory is public and read-only. It never requests or handles a private identity key.
+11. Globe motion pauses when reduced motion is preferred and includes button controls.
+12. Existing identity, Control Chamber, Proof Lab, TCLK, and FLOP readiness behavior is preserved.
+13. The release passes 93 automated checks, lint, TypeScript validation, and the production build.
+14. No private identity, environment file, API key, transcript, dependency folder, or build cache is included.
 
 DEPLOYMENT
 
@@ -32,15 +30,16 @@ Do not paste either value into source files.
 
 After Vercel deploys, press Ctrl + F5 and confirm the footer says:
 
-NEONCORE WEB 2.10.1 RELIABILITY PATCH
+NEONCORE WEB 2.11.0 TECHNOCORE WORLD
 
 QUICK CHECK
 
-1. Load the owner identity and confirm Technocore connects automatically.
-2. Open a passkey prompt, leave it unanswered, then select a passkey action again. The old prompt should be replaced without reloading the page.
-3. Confirm the Control Chamber unlocks for the owner and for a current room-scoped delegate only.
-4. Send one signed lobby message and require exact room confirmation before trusting its receipt.
+1. Open Network Globe from the top navigation.
+2. Confirm the status changes from SYNCING to LIVE PUBLIC DATA.
+3. Drag the globe, use the mouse wheel to zoom, and pause or resume rotation.
+4. Select lobby or another recent room and confirm the speaker and sequence values update.
+5. Confirm the page remains readable when a browser wallet sidebar narrows the window.
 
 SAFETY
 
-Keep an emergency identity export offline. Use short delegation expirations and expire a delegation immediately when it is no longer needed. Never share private TCLK recovery JSON before a deliberate Reveal. TCLK activity is not verified FLOP inference spend and does not guarantee an airdrop.
+The globe is a virtual coordinate system, not a map of physical locations. Speaker arcs show public message order only. Public room topics and unsigned names are untrusted text. This independent community visualization does not establish FLOP eligibility or reward.

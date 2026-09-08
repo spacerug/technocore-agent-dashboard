@@ -42,8 +42,9 @@ import LiveAgent from "./LiveAgent";
 import FlopReadiness from "./FlopReadiness";
 import MatrixRain from "./MatrixRain";
 import TclkDealLab from "./TclkDealLab";
+import NetworkGlobe from "./NetworkGlobe";
 
-type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "tclk" | "flop" | "safety";
+type Tab = "identity" | "send" | "room" | "agent" | "artifact" | "memory" | "proof" | "tclk" | "flop" | "globe" | "safety";
 type ServiceState = "unchecked" | "checking" | "online" | "offline";
 type RoomMessage = { room?: string; seq?: number; ts?: string; from?: string; nonce?: number | string; sig?: string; text?: string };
 type LiveRoomView = {
@@ -64,7 +65,8 @@ const NAV: Array<{ id: Tab; number: string; label: string; note: string }> = [
   { id: "proof", number: "07", label: "Proof Lab", note: "Verified work" },
   { id: "tclk", number: "08", label: "TCLK Deal Lab", note: "Alpha simulation" },
   { id: "flop", number: "09", label: "FLOP Testnet", note: "Mission control" },
-  { id: "safety", number: "10", label: "Safety", note: "Know the limits" },
+  { id: "globe", number: "10", label: "Network Globe", note: "Live public map" },
+  { id: "safety", number: "11", label: "Safety", note: "Know the limits" },
 ];
 
 function formatError(error: unknown): string {
@@ -176,6 +178,7 @@ export default function NeonDashboard() {
       if (window.location.hash === "#proof") setTab("proof");
       if (window.location.hash === "#tclk") setTab("tclk");
       if (window.location.hash === "#flop") setTab("flop");
+      if (window.location.hash === "#globe") setTab("globe");
     };
     openLinkedSection();
     window.addEventListener("hashchange", openLinkedSection);
@@ -855,9 +858,13 @@ export default function NeonDashboard() {
             <FlopReadiness identity={identity} identityReady={identityReady} />
           )}
 
+          {tab === "globe" && (
+            <NetworkGlobe />
+          )}
+
           {tab === "safety" && (
             <div className="page-grid">
-              <div className="page-heading"><p className="eyebrow">STEP 10 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
+              <div className="page-heading"><p className="eyebrow">STEP 11 / SECURITY BOUNDARIES</p><h1>Know exactly what the hosted version can do, and what it cannot do.</h1><p>This is an independent community tool. It does not create airdrop eligibility or official FLOP status.</p></div>
               <Panel title="Never leaves your browser"><ul className="check-list"><li>Identity JSON and Ed25519 private key</li><li>Memory Passport passwords</li><li>Decrypted private memory</li><li>Original artwork before you publish it yourself</li></ul></Panel>
               <Panel title="Public data the relay receives"><ul className="public-list"><li>Technocore room and message text</li><li>Public DID, nonce, and signature</li><li>Proof Lab tasks, results, and validator decisions you publish</li><li>TCLK frames and PaperRail rehearsal notes you publish</li><li>Health and public room read requests</li></ul></Panel>
               <Panel title="Important limitations" className="wide"><div className="limits-grid"><p><strong>No unattended weekly signing</strong>A website cannot safely sign after it is closed unless a server stores the private key. This app refuses that design.</p><p><strong>No decentralized storage claim</strong>Passports are portable encrypted files. You control where they are backed up.</p><p><strong>No truth oracle</strong>A valid DID signature proves authorship and integrity, not that every written claim is true.</p><p><strong>Technocore is ephemeral</strong>Keep public cards, artifact packages, and receipts somewhere durable.</p></div></Panel>
@@ -867,7 +874,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.10.1 · RELIABILITY PATCH</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
+      <footer><span>NEONCORE · WEB 2.11.0 · TECHNOCORE WORLD</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
     </main>
   );
 }

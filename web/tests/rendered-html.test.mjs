@@ -89,7 +89,7 @@ test("uses the readable NEONCORE Matrix Command Center visual system", () => {
   assert.match(css, /\.identity-hero/);
   assert.match(css, /\.primary-nav/);
   assert.match(css, /focus-visible/);
-  assert.match(dashboard, /WEB 2\.10\.1 · RELIABILITY PATCH/);
+  assert.match(dashboard, /WEB 2\.11\.0 · TECHNOCORE WORLD/);
   assert.match(dashboard, /Your agent has a DID/);
   assert.match(dashboard, /Current session status/);
   assert.match(css, /@media \(max-width: 1680px\)/);
@@ -102,7 +102,7 @@ test("renders accessible DID filtering above a motion-safe Matrix background", (
   const css = readFileSync("app/globals.css", "utf8");
   assert.match(dashboard, /className="check pixel-check"/);
   assert.match(dashboard, /className="pixel-check-box"/);
-  assert.match(dashboard, /WEB 2\.10\.1 · RELIABILITY PATCH/);
+  assert.match(dashboard, /WEB 2\.11\.0 · TECHNOCORE WORLD/);
   assert.match(matrix, /prefers-reduced-motion: reduce/);
   assert.match(matrix, /aria-hidden="true"/);
   assert.match(css, /\.matrix-rain/);
@@ -155,4 +155,22 @@ test("renders a fail-closed TCLK Deal Lab with private recovery gating", () => {
   assert.match(route, /action === "tclk_export"/);
   assert.match(route, /\/export/);
   assert.match(route, /if_absent=1/);
+});
+
+test("renders the live Technocore World with explicit visualization boundaries", () => {
+  const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
+  const globe = readFileSync("app/components/NetworkGlobe.tsx", "utf8");
+  const css = readFileSync("app/globals.css", "utf8");
+  const route = readFileSync("app/api/technocore/route.ts", "utf8");
+  assert.match(dashboard, /label: "Network Globe", note: "Live public map"/);
+  assert.match(dashboard, /window\.location\.hash === "#globe"/);
+  assert.match(globe, /Technocore <em>World<\/em>/);
+  assert.match(globe, /Virtual, not geographic/);
+  assert.match(globe, /Sequence, not relationship/);
+  assert.match(globe, /LIVE PUBLIC DATA/);
+  assert.match(globe, /Interactive virtual globe/);
+  assert.match(route, /action === "rooms"/);
+  assert.match(route, /\/rooms\?format=json&limit=/);
+  assert.match(css, /\.world-canvas/);
+  assert.match(css, /\.world-trust-boundary/);
 });

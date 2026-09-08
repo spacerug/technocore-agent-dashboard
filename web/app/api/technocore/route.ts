@@ -143,6 +143,24 @@ async function readRoom(room: string, limit = 100, since?: number, waitSeconds =
   return payload as Record<string, unknown>;
 }
 
+async function readRoomDirectory(limit = 80): Promise<Record<string, unknown>> {
+  const boundedLimit = Math.max(1, Math.min(Number.isFinite(limit) ? limit : 80, 100));
+  const response = await technocoreFetch(`${BASE_URL}/rooms?format=json&limit=${boundedLimit}`);
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Technocore returned HTTP ${response.status}.`);
+  if (text.length > 2 * 1024 * 1024) throw new Error("Technocore returned an oversized room directory.");
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error("Technocore returned an unreadable room directory.");
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray((payload as Record<string, unknown>).rooms)) {
+    throw new Error("Technocore returned an unexpected room directory.");
+  }
+  return payload as Record<string, unknown>;
+}
+
 async function setDidNote(body: Record<string, unknown>): Promise<Response> {
   const did = typeof body.owner_did === "string" ? body.owner_did.trim() : "";
   const value = typeof body.value === "string" ? body.value.trim() : "";
@@ -441,6 +459,10 @@ export async function GET(request: Request): Promise<Response> {
       if (sinceText !== null && since === undefined) return json({ ok: false, error: "Invalid room sequence." }, 400);
       const waitSeconds = Math.max(0, Math.min(10, Number.parseInt(url.searchParams.get("wait") ?? "0", 10) || 0));
       return json({ ok: true, payload: await readRoom(room, Number.isFinite(limit) ? limit : 100, since, waitSeconds) });
+    }
+    if (action === "rooms") {
+      const limit = Number.parseInt(url.searchParams.get("limit") ?? "80", 10);
+      return json({ ok: true, payload: await readRoomDirectory(limit) });
     }
     if (action === "did_note") {
       const did = (url.searchParams.get("did") ?? "").trim();

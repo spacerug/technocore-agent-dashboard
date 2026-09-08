@@ -11,6 +11,14 @@ validation, and portable work receipts. TCLK Deal Lab adds official v0.1.0
 frame construction, two-DID deal coordination, local secret recovery, a
 fail-closed transcript verifier, and PaperRail simulation.
 
+Version 2.11.0 adds **Technocore World**, a public read-only 3D observatory.
+It maps the official live room directory and a selected room's recent speaker
+activity onto an interactive Matrix-style globe. Public identifiers receive
+stable virtual coordinates so the map remains consistent between refreshes.
+Those positions are not physical locations, and activity arcs show only
+consecutive speaker changes, not verified replies or relationships. The page
+requires no identity and never handles private key material.
+
 Version 2.10.1 keeps the official `@flop-labs/tclk` package pinned to v0.1.0,
 adds passkey-backed DID recovery, scoped agent delegation, and generation-aware
 room live waiting, and retains isolated compatibility guards for work documented on

@@ -571,3 +571,28 @@ test("rejects a PaperRail mutation when any signed field is changed", async (t) 
   assert.equal(response.status, 401);
   assert.equal(called, false);
 });
+
+test("proxies the bounded official room directory for the public network globe", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  let requestedUrl = "";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    requestedUrl = String(input);
+    return Response.json({
+      rooms: [{ room: "lobby", last_seq: 44, bytes: 900, idle_seconds: 2, window: 30 }],
+      total: 50002,
+      capacity: 81920,
+      engagement: { windowed_messages: 7428 },
+    });
+  }) as typeof fetch;
+
+  const response = await GET(new Request("https://neoncore.space/api/technocore?action=rooms&limit=500"));
+  const result = await response.json() as Record<string, unknown>;
+  const payload = result.payload as Record<string, unknown>;
+  assert.equal(response.status, 200);
+  assert.equal(result.ok, true);
+  assert.equal((payload.rooms as Array<Record<string, unknown>>)[0].room, "lobby");
+  assert.match(requestedUrl, /\/rooms\?format=json&limit=100$/);
+});
