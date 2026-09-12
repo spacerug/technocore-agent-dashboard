@@ -2,13 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { BrowserIdentity } from "../lib/browser-crypto";
+import { TechnocoreReceipt } from "../lib/technocore-receipt";
+import { SonnetRoomMessage } from "../lib/flop-challenge";
+import SonnetChallengeCenter from "./SonnetChallengeCenter";
 import {
   calculateTestnetSpendPlan,
   createTestnetSessionDraft,
   DEFAULT_TESTNET_SPEND_PLAN,
   DevelopmentInferenceSummary,
   FLOP_TEASER_UPDATED,
+  FLOP_TEASER_GENESIS_POOL,
   FLOP_TEASER_URL,
+  FLOP_WIRE_PROFILE,
+  FLOP_WIRE_SCHEMA_URL,
+  FLOP_WIRE_VECTORS_URL,
+  FLOP_YELLOW_PAPER_DECISION_URL,
+  FLOP_YELLOW_PAPER_GENESIS_POOL,
+  FLOP_YELLOW_PAPER_URL,
+  FLOP_YELLOW_PAPER_VERSION,
   inferenceActivityKey,
   parseDevelopmentInference,
   parseTestnetSpendPlan,
@@ -21,6 +32,15 @@ import {
 type Props = {
   identity: BrowserIdentity | null;
   identityReady: boolean;
+  serviceOnline: boolean;
+  publishSigned: (room: string, text: string) => Promise<TechnocoreReceipt>;
+  readRoomView: (room: string, options?: { since?: number; wait?: number; signal?: AbortSignal }) => Promise<{
+    messages: SonnetRoomMessage[];
+    lastSeq?: number;
+    firstSeq?: number;
+    generation?: string;
+    waitHeld?: boolean;
+  }>;
 };
 
 function amount(value: number): string {
@@ -46,7 +66,7 @@ const DEFAULT_SESSION_DRAFT: TestnetSessionDraftInput = {
   maximumFeeFlop: "3",
 };
 
-export default function FlopReadiness({ identity, identityReady }: Props) {
+export default function FlopReadiness({ identity, identityReady, serviceOnline, publishSigned, readRoomView }: Props) {
   const [plan, setPlan] = useState<TestnetSpendPlanInput>({ ...DEFAULT_TESTNET_SPEND_PLAN });
   const [sessionDraft, setSessionDraft] = useState<TestnetSessionDraftInput>({ ...DEFAULT_SESSION_DRAFT });
   const [draftNotice, setDraftNotice] = useState("The unpublished model index is clearly marked as a placeholder. Replace it when FLOP publishes the official value.");
@@ -103,6 +123,18 @@ export default function FlopReadiness({ identity, identityReady }: Props) {
         owner_did: identity.did,
         official_reference: FLOP_TEASER_URL,
         official_draft_updated: FLOP_TEASER_UPDATED,
+        research_reference: {
+          yellow_paper: FLOP_YELLOW_PAPER_URL,
+          yellow_paper_version: FLOP_YELLOW_PAPER_VERSION,
+          wire_profile: FLOP_WIRE_PROFILE,
+          status: "research_draft_not_live_adapter",
+        },
+        unresolved_official_conflicts: [{
+          field: "genesis_airdrop_pool",
+          teaser_value_flop: FLOP_TEASER_GENESIS_POOL,
+          yellow_paper_value_flop: FLOP_YELLOW_PAPER_GENESIS_POOL,
+          policy: "do_not_use_for_personal_allocation_estimates_until_reconciled",
+        }],
         spend_plan: { input: plan, summary },
         session_draft: requestDraft,
         adapter_requirements: [
@@ -140,6 +172,14 @@ export default function FlopReadiness({ identity, identityReady }: Props) {
       <p>The draft makes agent participation measurable: claim test tokens, spend them on real inference, and retain verifiable network receipts. NEONCORE prepares the budget and request shape now without pretending development calls are eligible.</p>
     </div>
 
+    <SonnetChallengeCenter
+      identity={identity}
+      identityReady={identityReady}
+      serviceOnline={serviceOnline}
+      publishSigned={publishSigned}
+      readRoomView={readRoomView}
+    />
+
     <section className="panel wide flop-fact-panel">
       <p className="eyebrow">OFFICIAL TEASER / SECTION 04 / UPDATED {FLOP_TEASER_UPDATED}</p>
       <h2>What the current draft actually rewards</h2>
@@ -149,8 +189,26 @@ export default function FlopReadiness({ identity, identityReady }: Props) {
         <article><span>AIRDROP BASIS</span><strong>Largely inference spend</strong><p>The draft mentions additional prizes but does not define them yet.</p></article>
         <article><span>UNLOCK RULE</span><strong>3 spent unlocks 1</strong><p>Three FLOP spent on inference unlocks one airdropped FLOP.</p></article>
       </div>
-      <div className="status-line warn">Draft v0.1 is provisional. The Yellow Paper, chain parameters, faucet rules, official model index, and receipt format are not final.</div>
+      <div className="status-line warn">Draft v0.1 is provisional. Chain parameters, faucet rules, the official model index, and the live receipt format are not final.</div>
       <a className="button link-button" href={FLOP_TEASER_URL} target="_blank" rel="noreferrer">Read official Section 04</a>
+    </section>
+
+    <section className="panel wide flop-wire-panel">
+      <p className="eyebrow">YELLOW PAPER {FLOP_YELLOW_PAPER_VERSION} / RESEARCH DRAFT</p>
+      <h2>Track the proposed wire format without inventing a live network</h2>
+      <p>FLOP Labs has published the {FLOP_WIRE_PROFILE} schema, test vectors, and proposed receipt versions. NEONCORE records that profile in preparation kits now, but keeps submission disabled until official chain and endpoint details exist.</p>
+      <div className="flop-wire-grid">
+        <article><span>AVAILABLE NOW</span><strong>Public schema and vectors</strong><p>Developers can validate future adapters against stable examples before a live endpoint is announced.</p></article>
+        <article><span>NOT AVAILABLE</span><strong>No live adapter</strong><p>No official chain ID, RPC, faucet endpoint, wallet format, token contract, model index, or session API is published.</p></article>
+        <article><span>FAIL CLOSED</span><strong>Receipts stay at zero</strong><p>Research-draft fields cannot increase the confirmed FLOP spend meter.</p></article>
+      </div>
+      <div className="status-line warn">Official sources currently conflict on the genesis airdrop pool: the teaser states {FLOP_TEASER_GENESIS_POOL.toLocaleString()} FLOP while Yellow Paper {FLOP_YELLOW_PAPER_VERSION} states {FLOP_YELLOW_PAPER_GENESIS_POOL.toLocaleString()} FLOP. NEONCORE uses neither figure to estimate a personal allocation.</div>
+      <div className="button-row">
+        <a className="button link-button" href={FLOP_YELLOW_PAPER_URL} target="_blank" rel="noreferrer">Read Yellow Paper</a>
+        <a className="button link-button" href={FLOP_YELLOW_PAPER_DECISION_URL} target="_blank" rel="noreferrer">Read v0.5 decisions</a>
+        <a className="button link-button" href={FLOP_WIRE_SCHEMA_URL} target="_blank" rel="noreferrer">Inspect wire schema</a>
+        <a className="button link-button" href={FLOP_WIRE_VECTORS_URL} target="_blank" rel="noreferrer">Inspect test vectors</a>
+      </div>
     </section>
 
     <section className="panel wide flop-planner-panel">

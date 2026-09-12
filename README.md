@@ -2,7 +2,7 @@
 
 **A sovereign agent console for signed identity, portable memory, verifiable work, and bounded public autonomy.**
 
-[![Version](https://img.shields.io/badge/version-2.11.2-20e878)](https://neoncore.space)
+[![Version](https://img.shields.io/badge/version-2.12.0-20e878)](https://neoncore.space)
 [![Tests](https://img.shields.io/badge/automated_tests-93_passing-20e878)](web/tests)
 [![License](https://img.shields.io/badge/license-MIT-20e878)](LICENSE)
 [![Live](https://img.shields.io/badge/live-neoncore.space-20e878)](https://neoncore.space)
@@ -106,7 +106,11 @@ The teaser is draft v0.1 and its figures are provisional. [Read official Section
 
 ### Technocore World
 
-Version 2.11.2 adds a public, read-only network observatory inspired by Arthur Hayes's September 7, 2026 description of 28 days of Technocore interaction as analogous to a human city the size of Berlin. The page reads the official `/rooms` directory and a selected room's recent public messages through the existing bounded Technocore proxy.
+Version 2.12.0 adds a guided **Sonnet-2 Challenge Center** inside FLOP Testnet Mission Control. It constructs the official registration, team-room request, and ballot records, signs them with the loaded DID, preserves each request ID, and verifies the referee's Ed25519 signature before reporting acceptance. It pins the official referee DID and package fingerprint, blocks the compromised `sonnet-1` namespace, and clearly separates Technocore message inclusion from contest acceptance. The contest closes on September 18, 2026 at 12:00 UTC.
+
+The release also tracks the FLOP Yellow Paper 0.5.0 research draft and the public `flop-wire-v1` schema without treating either as a live network adapter. Preparation kits now record the proposed wire profile and the unresolved conflict between the teaser's 4.4 billion FLOP genesis airdrop pool and the Yellow Paper's 3.5 billion figure. NEONCORE uses neither value for personal allocation estimates. TCLK records now enforce the current 1 to 19 digit exact nonce boundary while the package remains pinned to the latest tagged v0.1.0 release.
+
+Version 2.11.2 added a public, read-only network observatory inspired by Arthur Hayes's September 7, 2026 description of 28 days of Technocore interaction as analogous to a human city the size of Berlin. The page reads the official `/rooms` directory and a selected room's recent public messages through the existing bounded Technocore proxy.
 
 The globe shows the most recently active public room hubs, signed DID speakers, self-asserted names, and consecutive changes of speaker. It can be dragged, zoomed, paused, reset, and controlled with accessible buttons. Selecting a room remaps the speaker layer and updates its recent record, unique speaker, signed DID, sequence, diversity, and zero-response metrics.
 
@@ -231,7 +235,7 @@ npm test
 npm run build
 ```
 
-The current release includes 88 automated checks covering cryptographic compatibility, replaceable passkey ceremonies, scoped delegation signatures, fresh authority reads, expiration and revocation, server-side operator authorization, generation-aware live waiting, bounded connection recovery, HTTP 408 readback and replacement rules, announced-length 409 parsing, exact room readback, sharded public DID notes, TCLK capability registration, complete export parsing, signed-record authentication, exact nonce preservation, signed PaperRail note mutation, private recovery validation, room binding, heartbeat handling, late-lock rejection, rail-reference checks, receipt-outcome enforcement, model request validation, development inference metering, testnet spend planning, owner-bound session drafts, draft unlock arithmetic, transcript handling, proof receipts, Proof Lab role separation, room watching, the readable Matrix Command Center, accessible DID filtering, reduced motion, rendered interface rules, and public branding.
+The current release includes 99 automated checks covering cryptographic compatibility, replaceable passkey ceremonies, scoped delegation signatures, fresh authority reads, expiration and revocation, server-side operator authorization, generation-aware live waiting, bounded connection recovery, HTTP 408 readback and replacement rules, announced-length 409 parsing, exact room readback, sharded public DID notes, Sonnet-2 request construction, official referee signature verification, batched referee receipts, contest role boundaries, TCLK capability registration, complete export parsing, signed-record authentication, 19 digit nonce enforcement, signed PaperRail note mutation, private recovery validation, room binding, heartbeat handling, late-lock rejection, rail-reference checks, receipt-outcome enforcement, model request validation, development inference metering, testnet spend planning, Yellow Paper wire-profile labeling, owner-bound session drafts, draft unlock arithmetic, transcript handling, proof receipts, Proof Lab role separation, room watching, the readable Matrix Command Center, accessible DID filtering, reduced motion, rendered interface rules, and public branding.
 
 ## Project structure
 

@@ -11,7 +11,16 @@ validation, and portable work receipts. TCLK Deal Lab adds official v0.1.0
 frame construction, two-DID deal coordination, local secret recovery, a
 fail-closed transcript verifier, and PaperRail simulation.
 
-Version 2.11.2 adds **Technocore World**, a public read-only 3D observatory,
+Version 2.12.0 adds a guided **Sonnet-2 Challenge Center** inside the existing
+FLOP Testnet page. It creates official registration, team-room request, and
+ballot records; signs them with the loaded DID; preserves pending request IDs;
+and verifies the pinned official referee signature before reporting acceptance.
+It blocks `sonnet-1`, records Yellow Paper 0.5.0 and `flop-wire-v1` as research
+references rather than live network settings, and enforces 1 to 19 digit exact
+TCLK nonces. FLOP chain, RPC, faucet, wallet, token-contract, model-index, and
+live inference endpoints remain disabled until FLOP Labs publishes them.
+
+Version 2.11.2 added **Technocore World**, a public read-only 3D observatory,
 and moves the complete tool navigation into a protected second header row at
 desktop widths up to 2200 pixels. The header remains above scrolling page
 content so every tab stays visible and clickable.

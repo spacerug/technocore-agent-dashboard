@@ -63,6 +63,7 @@ test("adds passkey recovery, scoped delegation, and generation-aware live wait",
 test("prepares FLOP testnet activity without claiming development spend", () => {
   const dashboard = readFileSync("app/components/NeonDashboard.tsx", "utf8");
   const readiness = readFileSync("app/components/FlopReadiness.tsx", "utf8");
+  const challenge = readFileSync("app/components/SonnetChallengeCenter.tsx", "utf8");
   const agent = readFileSync("app/components/LiveAgent.tsx", "utf8");
   assert.match(dashboard, /label: "FLOP Testnet", note: "Mission control"/);
   assert.match(dashboard, /not an announced FLOP airdrop metric/);
@@ -74,6 +75,13 @@ test("prepares FLOP testnet activity without claiming development spend", () => 
   assert.match(readiness, /SESSION REQUEST PREPARATION/);
   assert.match(readiness, /Download testnet preparation kit/);
   assert.match(readiness, /planning_only_not_submitted/);
+  assert.match(readiness, /YELLOW PAPER \{FLOP_YELLOW_PAPER_VERSION\} \/ RESEARCH DRAFT/);
+  assert.match(readiness, /Official sources currently conflict on the genesis airdrop pool/);
+  assert.match(challenge, /Sonnet Challenge Center/);
+  assert.match(challenge, /Never use sonnet-1/);
+  assert.match(challenge, /Only receipts whose Ed25519 signature verifies/);
+  assert.match(challenge, /Do not create a new request ID/);
+  assert.match(challenge, /not proof of general testnet airdrop eligibility/);
   assert.match(agent, /Measured model use, not FLOP testnet spend/);
 });
 
@@ -89,7 +97,7 @@ test("uses the readable NEONCORE Matrix Command Center visual system", () => {
   assert.match(css, /\.identity-hero/);
   assert.match(css, /\.primary-nav/);
   assert.match(css, /focus-visible/);
-  assert.match(dashboard, /WEB 2\.11\.2 · STICKY HEADER FIX/);
+  assert.match(dashboard, /WEB 2\.12\.0 · FLOP CHALLENGE READY/);
   assert.match(css, /\.topbar \{ position: relative; z-index: 100; \}/);
   assert.match(css, /background: rgba\(2, 8, 5, \.97\)/);
   assert.match(dashboard, /Your agent has a DID/);
@@ -105,7 +113,7 @@ test("renders accessible DID filtering above a motion-safe Matrix background", (
   const css = readFileSync("app/globals.css", "utf8");
   assert.match(dashboard, /className="check pixel-check"/);
   assert.match(dashboard, /className="pixel-check-box"/);
-  assert.match(dashboard, /WEB 2\.11\.2 · STICKY HEADER FIX/);
+  assert.match(dashboard, /WEB 2\.12\.0 · FLOP CHALLENGE READY/);
   assert.match(matrix, /prefers-reduced-motion: reduce/);
   assert.match(matrix, /aria-hidden="true"/);
   assert.match(css, /\.matrix-rain/);

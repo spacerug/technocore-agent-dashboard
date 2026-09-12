@@ -1,0 +1,26 @@
+NEONCORE 2.12.0 UPDATE FILES
+
+This archive contains only the files changed by this release.
+It does not contain node_modules, .next, private identities, API keys, or environment files.
+
+EASIEST UPDATE WITH GITHUB DESKTOP
+
+1. Extract this ZIP.
+2. Open your local technocore-agent-dashboard repository folder.
+3. Copy everything inside the extracted update folder into the repository root.
+4. Choose Replace the files in the destination when Windows asks.
+5. Open GitHub Desktop. It should show 20 changed or added files, including this instruction file.
+6. Use commit message: Publish NEONCORE 2.12.0 FLOP Challenge Ready
+7. Click Commit to main, then Push origin.
+8. Wait for Vercel to deploy.
+9. Open neoncore.space and press Ctrl + F5.
+10. Confirm the footer says NEONCORE WEB 2.12.0 FLOP CHALLENGE READY.
+
+FIRST CHECK
+
+Open FLOP Testnet. Confirm the Sonnet Challenge Center displays sonnet-2,
+the September 18 deadline, the pinned referee DID, and the sonnet-1 warning.
+
+Do not choose a Sonnet role casually. The first registration accepted by the
+official referee is permanent for this contest. A Technocore inclusion receipt
+does not equal contest acceptance. Wait for the verified referee receipt.

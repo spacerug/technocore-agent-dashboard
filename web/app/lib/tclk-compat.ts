@@ -12,7 +12,7 @@ const MAX_FRAME_CHARS = 4096;
 const ROOM_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const CONTRACT_RE = /^0x[0-9a-f]{64}$/;
 const FRAME_NONCE_RE = /^[0-9a-f]{8,64}$/;
-const DECIMAL_NONCE_RE = /^(?:0|[1-9][0-9]*)$/;
+const DECIMAL_NONCE_RE = /^(?:0|[1-9][0-9]{0,18})$/;
 const SIGNATURE_RE = /^[A-Za-z0-9_-]{85}[AQgw]$/;
 const TIMESTAMP_RE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 

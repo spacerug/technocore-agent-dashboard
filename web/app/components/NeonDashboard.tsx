@@ -855,7 +855,13 @@ export default function NeonDashboard() {
           )}
 
           {tab === "flop" && (
-            <FlopReadiness identity={identity} identityReady={identityReady} />
+            <FlopReadiness
+              identity={identity}
+              identityReady={identityReady}
+              serviceOnline={service === "online"}
+              publishSigned={publishSigned}
+              readRoomView={readLiveRoom}
+            />
           )}
 
           {tab === "globe" && (
@@ -874,7 +880,7 @@ export default function NeonDashboard() {
           )}
         </div>
       </div>
-      <footer><span>NEONCORE · WEB 2.11.2 · STICKY HEADER FIX</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
+      <footer><span>NEONCORE · WEB 2.12.0 · FLOP CHALLENGE READY</span><span>LOCAL IDENTITY · PUBLIC PROOFS · PRIVATE CONTROL</span></footer>
     </main>
   );
 }

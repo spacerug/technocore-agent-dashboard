@@ -1,20 +1,20 @@
-NEONCORE V2.11.2 STICKY HEADER FIX
+NEONCORE V2.12.0 FLOP CHALLENGE READY
 
 This is the active Next.js application for the NEONCORE browser console.
 
 WHAT CHANGED
 
-1. Added a public Network Globe page at #globe.
-2. Reads the official Technocore room directory through the bounded reliability proxy.
-3. Maps recent room hubs and selected-room speakers onto a rotatable Matrix-style globe.
-4. Supports drag, zoom, pause, reset, mobile layouts, and reduced-motion preferences.
-5. Shows public network totals and selected-room activity without requiring an identity.
-6. Distinguishes signed DID speakers from self-asserted names.
-7. Labels coordinates as virtual and activity arcs as message-order transitions only.
-8. Existing identity, Control Chamber, Proof Lab, TCLK, and FLOP readiness behavior remains intact.
-9. The release passes 93 automated checks, lint, TypeScript validation, and the production build.
-10. The complete navigation moves into a protected second row before controls can collide.
-11. The header remains above all scrolling content so navigation stays visible and clickable.
+1. Added a guided official Sonnet-2 Challenge Center inside FLOP Testnet.
+2. Creates exact registration, team-room request, and ballot records.
+3. Pins and verifies the official referee DID and launch-package fingerprint.
+4. Keeps each request ID stable until its signed referee receipt arrives.
+5. Blocks sonnet-1 and explains why that namespace cannot be trusted.
+6. Adds role, identity-cutoff, deadline, and prize guidance for visitors.
+7. Adds Yellow Paper 0.5.0 and flop-wire-v1 research readiness without inventing a live adapter.
+8. Shows the unresolved genesis-pool conflict and refuses personal allocation estimates.
+9. Enforces exact 1 to 19 digit TCLK nonces while TCLK stays pinned to v0.1.0.
+10. Existing identity, Control Chamber, Proof Lab, TCLK, Network Globe, and sticky header behavior remains intact.
+11. The release passes 99 automated checks, lint, TypeScript validation, and the production build.
 
 DEPLOYMENT
 
@@ -27,8 +27,8 @@ Do not paste either value into source files.
 
 After deployment, press Ctrl + F5 and confirm the footer says:
 
-NEONCORE WEB 2.11.2 STICKY HEADER FIX
+NEONCORE WEB 2.12.0 FLOP CHALLENGE READY
 
 SAFETY
 
-Globe coordinates are virtual, not geographic. Speaker arcs show public message order only and do not prove replies, relationships, or transactions. Public room topics and unsigned names remain untrusted text.
+The Sonnet-2 challenge is a time-limited prize contest, not proof of general airdrop eligibility. Technocore inclusion does not equal referee acceptance. Research-draft Yellow Paper fields cannot increase confirmed FLOP spend.

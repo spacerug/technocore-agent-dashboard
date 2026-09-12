@@ -1,5 +1,13 @@
 export const FLOP_TEASER_URL = "https://flop.finance/teaser/#04-testnet-and-airdrop";
 export const FLOP_TEASER_UPDATED = "2026-08-26";
+export const FLOP_YELLOW_PAPER_URL = "https://github.com/flop-labs/yellowpaper";
+export const FLOP_YELLOW_PAPER_DECISION_URL = "https://github.com/flop-labs/yellowpaper/blob/main/decisions/v0.5.md";
+export const FLOP_WIRE_SCHEMA_URL = "https://github.com/flop-labs/yellowpaper/blob/main/evidence/wire-format-v1.schema.json";
+export const FLOP_WIRE_VECTORS_URL = "https://github.com/flop-labs/yellowpaper/blob/main/evidence/wire-format-v1.json";
+export const FLOP_YELLOW_PAPER_VERSION = "0.5.0";
+export const FLOP_WIRE_PROFILE = "flop-wire-v1";
+export const FLOP_TEASER_GENESIS_POOL = 4_400_000_000;
+export const FLOP_YELLOW_PAPER_GENESIS_POOL = 3_500_000_000;
 export const MAX_DEVELOPMENT_INFERENCE_RECORDS = 200;
 
 export type TestnetSpendPlanInput = {
@@ -37,6 +45,11 @@ export type TestnetSessionDraft = {
   owner_did: string;
   created_at_utc: string;
   task_label: string;
+  protocol_reference: {
+    yellow_paper_version: typeof FLOP_YELLOW_PAPER_VERSION;
+    wire_profile: typeof FLOP_WIRE_PROFILE;
+    status: "research_draft_not_live_adapter";
+  };
   request: {
     model_weights_index: string;
     maximum_latency_ms: number;
@@ -156,6 +169,11 @@ export function createTestnetSessionDraft(
     owner_did: ownerDid,
     created_at_utc: requiredSingleLine(createdAtUtc, "Creation time", 40),
     task_label: requiredSingleLine(input.taskLabel, "Task label", 120),
+    protocol_reference: {
+      yellow_paper_version: FLOP_YELLOW_PAPER_VERSION,
+      wire_profile: FLOP_WIRE_PROFILE,
+      status: "research_draft_not_live_adapter",
+    },
     request: {
       model_weights_index: requiredSingleLine(input.modelWeightsIndex, "Model weights index", 256),
       maximum_latency_ms: maximumLatencyMs,

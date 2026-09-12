@@ -136,7 +136,7 @@ test("offer board rejects an accept that precedes its authenticated offer", asyn
   assert.match(scan.rejected[0].reason, /no preceding authenticated offer/i);
 });
 
-test("preserves and verifies decimal string nonces beyond JavaScript safe integers", async () => {
+test("preserves and verifies exact decimal string nonces up to 19 digits", async () => {
   const { payer, offer } = await preparedDeal();
   const message = await signedMessage(
     payer,
@@ -144,11 +144,26 @@ test("preserves and verifies decimal string nonces beyond JavaScript safe intege
     99,
     NOW + 5_000,
     encodeFrame(offer),
-    "900719925474099300001",
+    "9007199254740993000",
   );
   const scan = await scanTclkOfferBoard([message]);
   assert.equal(scan.offers.length, 1);
-  assert.equal(scan.offers[0].record.nonce, "900719925474099300001");
+  assert.equal(scan.offers[0].record.nonce, "9007199254740993000");
+});
+
+test("rejects decimal string nonces longer than 19 digits", async () => {
+  const { payer, offer } = await preparedDeal();
+  const message = await signedMessage(
+    payer,
+    TCLK_OFFER_ROOM,
+    100,
+    NOW + 6_000,
+    encodeFrame(offer),
+    "90071992547409930000",
+  );
+  const scan = await scanTclkOfferBoard([message]);
+  assert.equal(scan.offers.length, 0);
+  assert.equal(scan.rejected.length, 1);
 });
 
 test("folds lock, heartbeat, and reveal through the compatibility state machine", async () => {

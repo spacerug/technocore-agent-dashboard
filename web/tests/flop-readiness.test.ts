@@ -92,6 +92,11 @@ test("builds an owner-bound draft containing the five announced session fields",
   }, "2026-08-29T20:00:00.000Z");
   assert.equal(draft.owner_did, ownerDid);
   assert.equal(draft.scope, "draft_only_not_submitted");
+  assert.deepEqual(draft.protocol_reference, {
+    yellow_paper_version: "0.5.0",
+    wire_profile: "flop-wire-v1",
+    status: "research_draft_not_live_adapter",
+  });
   assert.deepEqual(draft.request, {
     model_weights_index: "sha256:model-weights-index",
     maximum_latency_ms: 30000,
